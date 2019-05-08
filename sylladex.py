@@ -10,34 +10,21 @@ what ARE YOU evein DOING
 8^Y
 """
 
-import tkinter as tk
-import threading
+import listener as lt
+import display as ds
+import topWindow as tw
+import manager as mg
 
+"""
+some random cool functions you could add as data types:
 
-class App(threading.Thread):
-    def __init__(self, tk_root):
-        self.root = tk_root
-        threading.Thread.__init__(self)
-        self.start()
+regex find/replace filters
+combine as variables into longer strings
+copy/paste keypress strings
+plaintext vs formatting
 
-    def run(self):
-        loop_active = True
-        while loop_active:
-            user_input = input("Give me your command! Just type \"exit\" to close: ")
-            if user_input == "exit":
-                loop_active = False
-                self.root.quit()
-                self.root.update()
-            else:
-                label = tk.Label(self.root, text=user_input)
-                label.pack()
-
-
-ROOT = tk.Tk()
-APP = App(ROOT)
-LABEL = tk.Label(ROOT, text="Hello, world!")
-LABEL.pack()
-ROOT.mainloop()
+sillier moduses: calculator, etc
+"""
 
 
 #

@@ -4,8 +4,8 @@ import threading
 import queue
 from functools import partial
 import pyWinhook as ph
-import pythoncom
-
+from pythoncom import PumpMessages
+from pynput.keyboard import Key, Controller
 
 def OnMouseEvent(event):
     """unused function to pull all info from a mouse event"""
@@ -70,9 +70,23 @@ def keyhandler(keyqueue):
             print(".")
 
 
+kctrl = False
+
+
 def enqueueKey(event, keyqueue):
+    """this is our tiny respond to keypress function.
+
+    It should probably be smaller, but we're hacking it apart"""
     assert isinstance(keyqueue, queue.Queue)
     keyqueue.put(event)
+    global kctrl  # noqa don't care it's a hack in a prototype module
+
+    if event.Key == "Lcontrol":
+        kctrl = event.Transition == 0
+
+    if event.Key == "V" and event.Transition == 0 and kctrl:
+        # supress paste events
+        return False
 
     return True
 

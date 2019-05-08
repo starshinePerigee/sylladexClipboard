@@ -3,107 +3,73 @@
 import threading
 import queue
 from functools import partial
-import pyWinhook as ph
-from pythoncom import PumpMessages
-from pynput.keyboard import Key, Controller
+import pynput.keyboard as pk
 
-def OnMouseEvent(event):
-    """unused function to pull all info from a mouse event"""
-    print('MessageName: %s' % event.MessageName)
-    print('Message: %s' % event.Message)
-    print('Time: %s' % event.Time)
-    print('Window: %s' % event.Window)
-    print('WindowName: %s' % event.WindowName)
-    print('Position: (%d, %d)' % event.Position)
-    print('Wheel: %s' % event.Wheel)
-    print('Injected: %s' % event.Injected)
-    print('---')
-
-    # return True to pass the event to other handlers
-    # return False to stop the event from propagating
-    return True
-
-
-def OnKeyboardEvent(event):
-    """unused function to pull all info from a keyboard event"""
-    print('MessageName: %s' % event.MessageName)
-    print('Message: %s' % event.Message)
-    print('Time: %s' % event.Time)
-    print('Window: %s' % event.Window)
-    print('WindowName: %s' % event.WindowName)
-    print('Ascii: %s' % event.Ascii, chr(event.Ascii))
-    print('Key: %s' % event.Key)
-    print('KeyID: %s' % event.KeyID)
-    print('ScanCode: %s' % event.ScanCode)
-    print('Extended: %s' % event.Extended)
-    print('Injected: %s' % event.Injected)
-    print('Alt %s' % event.Alt)
-    print('Transition %s' % event.Transition)
-    print('---')
-
-    # return True to pass the event to other handlers
-    # return False to stop the event from propagating
-    return True
+CTRLS = (pk.Key.ctrl, pk.Key.ctrl_l, pk.Key.ctrl_r)
 
 
 def keyhandler(keyqueue):
     """track keyboard states and generate events"""
     assert isinstance(keyqueue, queue.Queue)
     ctrl = False
+    global kctrl  # noqa
 
-    while True:
+    exit = False
+    while not exit:
         try:
-            event = keyqueue.get(block=True, timeout=2)
-            # OnKeyboardEvent(event)
-            if event.Key == "Lcontrol":
-                ctrl = event.Transition == 0
-            else:
-                if event.Transition == 0 and ctrl:
-                    if event.Key == "C":
-                        print("Copied")
-                    elif event.Key == "X":
-                        print("Cut")
-                    elif event.Key == "V":
-                        print("Pasted")
+            key = keyqueue.get(block=True, timeout=2)
+            # print(str(key) + " c:" + str(ctrl) + " k:" + str(kctrl))
+            if key[0] in CTRLS:
+                if not key[1]:
+                    ctrl = False
+                else:
+                    ctrl = True
+
+            # print("key type: " + str(type(key[0])))
+            if ctrl and key[1] and isinstance(key[0], pk._win32.KeyCode):
+                if key[0].char == 'c':
+                    print("Copied")
+                elif key[0].char == "x":
+                    print("Cut")
+                elif key[0].char == "v":
+                    print("Pasted")
+
+            if key[0] == pk.Key.esc:
+                exit = True
 
         except queue.Empty:
             print(".")
+            if ctrl or kctrl:
+                print("c:" + str(ctrl) + " k:" + str(kctrl))
+                raise Exception("CTRL should not be set right now!")
 
 
 kctrl = False
 
 
-def enqueueKey(event, keyqueue):
+def enqueueKey(key, keyqueue):
     """this is our tiny respond to keypress function.
 
     It should probably be smaller, but we're hacking it apart"""
-    assert isinstance(keyqueue, queue.Queue)
-    keyqueue.put(event)
+    keyqueue.put((key, True))
+
     global kctrl  # noqa don't care it's a hack in a prototype module
+    if key in CTRLS:
+        kctrl = True
 
-    if event.Key == "Lcontrol":
-        kctrl = event.Transition == 0
-
-    if event.Key == "V" and event.Transition == 0 and kctrl:
-        # supress paste events
-        return False
-
-    return True
+    global listener  # noqa see above
+    if isinstance(key, pk._win32.KeyCode):
+        if key.char == "v":  # and kctrl:
+            listener.suppress_event()
 
 
-def listener(keyqueue):
-    """do low level monitoring for keypresses"""
-    hm = ph.HookManager()
+def releaseMod(key, keyqueue):
+    """this just updates the modifier key counts"""
+    keyqueue.put((key, False))
 
-    # hm.MouseAllButtonsDown = OnMouseEvent
-    # hm.KeyAll = OnKeyboardEvent
-    f = partial(enqueueKey, keyqueue=keyqueue)
-    hm.KeyAll = f
-
-    # hm.HookMouse()
-    hm.HookKeyboard()
-
-    pythoncom.PumpMessages()
+    global kctrl  # noqa see above
+    if key in CTRLS:
+        kctrl = False
 
 
 # initialize key queue:
@@ -111,14 +77,13 @@ kq = queue.Queue()
 
 # initialize hotkey handler:
 kh = threading.Thread(target=keyhandler,
-                      args=(kq,)
-                      )  # daemon=True)
+                      args=(kq,))  # daemon=True)
 kh.start()
 
-# initialize the listener thread:
-li = threading.Thread(target=listener,
-                      args=(kq,)
-                      )  # daemon=True)
-li.start()
+# initialize the listener:
+listener = pk.Listener(
+    on_press=partial(enqueueKey, keyqueue=kq),
+    on_release=partial(releaseMod, keyqueue=kq))
+listener.start()
 
 print("threads opened successfully")

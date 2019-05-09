@@ -1,4 +1,10 @@
-"""let's test evesdropping on keyboard input"""
+"""let's test evesdropping on keyboard input
+
+super useful references:
+https://github.com/Tungsteno74/pyWinhook
+https://realpython.com/intro-to-python-threading/
+https://docs.python.org/3.7/library/queue.html
+https://pynput.readthedocs.io/en/latest/keyboard.html"""
 
 import threading
 import queue

@@ -24,6 +24,8 @@ copy/paste keypress strings
 plaintext vs formatting
 
 sillier moduses: calculator, etc
+even sillier: call directly into terminal / other paste recievers
+(programs as captchalog cards)
 """
 
 

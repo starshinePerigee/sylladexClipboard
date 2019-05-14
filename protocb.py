@@ -1,15 +1,18 @@
 """lets just test clipboard junk
 
 this monitors the clipboard, prints info when something comes in,
-and replaces it with a plaintext version of the copied item.
+and keeps a four-wide FIFO queue
 
-copy "quit" as notepad plaintext to halt the program.
+copy "q" as notepad plaintext to halt the program.
 
 https://docs.activestate.com/activepython/3.2/pywin32/win32clipboard.html
 https://docs.microsoft.com/en-us/windows/desktop/dataxchg/about-the-clipboard
 """
 
+import sys
 from time import sleep
+import ipdb
+import pywintypes
 import win32clipboard as clip
 
 # standard format names:
@@ -44,56 +47,159 @@ STANDARDFORMATS = {
 }
 
 
-def cbwrite(text):
+def explodeType(target):
+    try:
+        types = []
+        for i in target:
+            types.append(type(i))
+        return (str(len(target)) + "-element " + str(type(target)) +
+                ": " + str(types))
+    except TypeError:
+        return str(type(target))
+
+
+def shortPrint(item, length=80):
+    cstring = str(item)
+    if len(cstring) > length:
+        cstring = cstring[:length]
+    return cstring
+
+
+def formatName(format):
+    if format in STANDARDFORMATS:
+        return "standard format " + STANDARDFORMATS[format]
+    # print("looking up " + str(format))
+    return clip.GetClipboardFormatName(format)
+
+
+def cbwrite(data, formats):
     clip.EmptyClipboard()
-    clip.SetClipboardText(text)
+    if data is not None:
+        for i in range(0, len(data)):
+            if formats[i][0] == 3:
+                #print("CF_METAFILEPICT not supported by win32clipboard!")
+                pass
+            else:
+                print("writing \"" + shortPrint(data[i]) + "\" as " +
+                      str(formats[i][1]))
+                clip.SetClipboardData(formats[i][0], data[i])
+
+
+def cbSingleRead(format):
+    #print("Reading " + formatName(format) + " (" + str(format) + ")")
+    if format == 3:  # CF_METAFILEPICT NOT SUPPORTED BY win32clipboard
+        print("CF_METAFILEPICT not supported by win32clipboard! Returning -1")
+        return -1
+    try:
+        return clip.GetClipboardData(format)
+    except TypeError:
+        print("CLIPBOARD FORMAT UNAVAILABLE: " + formatName(format) +
+              " (" + str(format) + ")")
+        return None
 
 
 def cbread(format):
-    data = clip.GetClipboardData(format)
+    if format is None:
+        return None
+
+    if isinstance(format, int):
+        return cbSingleRead(format)
+
+    if len(format) == 0:
+        return None
+
+    data = []
+    for f in format:
+        data.append(cbSingleRead(f[0]))
     return data
 
 
 def cbtypes():
     data = []
-    i = 0
-    while clip.EnumClipboardFormats(i) != 0:
-        format = clip.EnumClipboardFormats(i)
-        # print(format)
-        if format in STANDARDFORMATS:
-            flist = (format, STANDARDFORMATS[format])
-        else:
-            flist = (format, clip.GetClipboardFormatName(format))
-        data.append(flist)
-        i += 1
+    type = 0
+    while clip.EnumClipboardFormats(type) != 0:
+        type = clip.EnumClipboardFormats(type)
+        data.append((type, formatName(type)))
     return data
 
 
+dataQueue = [(None, None), (None, None), (None, None)]
+def cqueue(data, formats):
+    (newData, newFormats) = dataQueue.pop(0)
+    dataQueue.append((data, formats))
+    cbwrite(newData, newFormats)
+
+    # print("newdata was popped: " + shortPrint(newData))
+    # print("this is what is now on the clipboard: " +
+    #       shortPrint(cbread(newFormats)))
+
+    print("\r\nqueue: [" + shortPrint(dataQueue[0][0], 8) +
+          "][" + shortPrint(dataQueue[1][0], 8) +
+          "][" + shortPrint(dataQueue[2][0], 8) + "]")
+
+    return newData
+
+
 halt = False
-buffer = None
+seqNumber = None
 while not halt:
 
+    # there's a clipboard ID function you can use to check if the cb has updated
     try:
-        clip.OpenClipboard()
-        types = cbtypes()
-        current = cbread(types[0][0])
-        clip.CloseClipboard()
-        if current != buffer:
-            print(types)
-            buffer = current
-            cstring = str(current)
-            if len(cstring) > 200:
-                cstring = cstring[:200] + "\r\n..."
-            print(cstring)
-            if cstring == "q":
-                halt = True
-            print("\r\n")
-    except:
-        print("Access denied")
-        try:
-            owner = clip.GetClipboardOwner()
-            print("Clipboard is owned by " + str(owner))
-        except:
-            print("Can't read owner")
+        if clip.GetClipboardSequenceNumber() != seqNumber:
+            clip.OpenClipboard()
+            print("seq#: " + str(clip.GetClipboardSequenceNumber()))
+            types = cbtypes()
+            print("types: " + str(types))
+            # print("type^2: " + explodeType(types))
+            current = cbread(types)
+            print("data: " + shortPrint(current))
+            print("data type: " + explodeType(current))
 
-    sleep(0.05)
+            # ipdb.set_trace()
+            print("\r\n")
+            try:
+                if current[0] == 'q':
+                    clip.EmptyClipboard()
+                    halt = True
+                elif current[0] == 'd':
+                    ipdb.set_trace()
+                    clip.EmptyClipboard()
+                    clip.CloseClipboard()
+            except TypeError:
+                pass
+            cqueue(current, types)
+            print("\r\n")
+            seqNumber = clip.GetClipboardSequenceNumber()
+            print("new seq#: " + str(seqNumber))
+            types = cbtypes()
+            print("new type: " + str(types))
+            # print("new type^2: " + explodeType(types))
+            current = cbread(types)
+            print("new data: " + shortPrint(current))
+            print("new data type: " + explodeType(current))
+            clip.CloseClipboard()
+            seqNumber = clip.GetClipboardSequenceNumber()
+            print("newest seq #: " + str(seqNumber))
+            print("*****************\r\n")
+
+        #ipdb.set_trace()
+    except pywintypes.error:
+        error1 = sys.exc_info()
+        if error1[1].strerror == 'Access is denied.':
+            print("Access denied")
+            try:
+                owner = clip.GetClipboardOwner()
+                print("Clipboard is owned by " + str(owner))
+            except pywintypes.error:
+                error2 = sys.exc_info()
+                if (error2[1].funcname == "GetClipboardOwner" and
+                    error2[1].strerror == "Access is denined."):
+                    print("Can't read owner")
+                else:
+                    print("ERROR DURING OWNER CHECK: \r\n" + str(error2))
+        else:
+            print(error1)
+            print("ERROR DURING CLIPBOARD READ: \r\n" + str(error1))
+            # ipdb.set_trace()
+    sleep(0.1)

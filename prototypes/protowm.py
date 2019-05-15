@@ -3,4 +3,4 @@
 reference:
 https://www.pythonstudio.us/wxpython/how-do-i-make-a-nonrectangular-frame.html
 """
-print("tk test")
+print("wx test")

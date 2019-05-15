@@ -7,7 +7,7 @@ https://stackoverflow.com/a/48401917 """
 import wx.adv
 import wx
 TRAY_TOOLTIP = 'Name'
-TRAY_ICON = 'icon.ico'
+TRAY_ICON = 'prototypes\\icon.ico'
 
 
 def create_menu_item(menu, label, func):

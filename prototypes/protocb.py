@@ -6,7 +6,10 @@ and keeps a four-wide FIFO queue
 copy "q" as notepad plaintext to halt the program.
 
 https://docs.activestate.com/activepython/3.2/pywin32/win32clipboard.html
+https://github.com/mhammond/pywin32/blob/master/win32/src/win32clipboardmodule.cpp
 https://docs.microsoft.com/en-us/windows/desktop/dataxchg/about-the-clipboard
+https://docs.microsoft.com/en-us/windows/desktop/dataxchg/using-the-clipboard
+https://blogs.msdn.microsoft.com/ntdebugging/2012/03/16/how-the-clipboard-works-part-1/
 """
 
 import sys

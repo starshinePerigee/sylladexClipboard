@@ -27,11 +27,14 @@ CARD_SPACE = 50
 # xy location of the first card:
 START_POINT = QPoint(100, 100)
 
+
 class CardOverlay(QLabel):
     def __init__(self, parent, pixmap):
         super(CardOverlay, self).__init__(parent.parent())
         self.setPixmap(pixmap)
         self.move(parent.geometry().center()-pixmap.rect().center())
+        z_parent = self.parent().children().index(parent)
+        self.stackUnder(self.parent().children()[z_parent+1])
 
         # not relevant right now but still:
         # https://eli.thegreenplace.net/2011/04/25/passing-extra-arguments-to-pyqt-slot
@@ -77,11 +80,13 @@ class SylladexCard(QLabel):
 
         self.position = startpoint+FADE_IN_POSITION
         self.move(self.position)
+        self.move_ani = None
 
         self.alpha = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.alpha)
         self.alpha.setOpacity(0)
         self.alphaValue = 0
+        self.fade_ani = None
 
         self.IDLabel = QLabel(str(self.ID), self)
         self.IDLabel.move(15, 18)
@@ -103,17 +108,17 @@ class SylladexCard(QLabel):
         animation.setEndValue(newvalue)
         animation.start()
 
-    def fade_animation(self, newalpha, duration, delay=0.0):
-        self.fadeani = QPropertyAnimation(self.alpha, b"opacity")
-        self.arbitrary_animation(self.fadeani, self.alphaValue, newalpha,
+    def fade_animation(self, new_alpha, duration, delay=0.0):
+        self.fade_ani = QPropertyAnimation(self.alpha, b"opacity")
+        self.arbitrary_animation(self.fade_ani, self.alphaValue, new_alpha,
                                  duration, delay)
-        self.alphaValue = newalpha
+        self.alphaValue = new_alpha
 
-    def move_animation(self, newpos, duration, delay=0.0):
-        self.moveani = QPropertyAnimation(self, b"pos")
-        self.arbitrary_animation(self.moveani, self.position, newpos,
+    def move_animation(self, new_pos, duration, delay=0.0):
+        self.move_ani = QPropertyAnimation(self, b"pos")
+        self.arbitrary_animation(self.move_ani, self.position, new_pos,
                                  duration, delay)
-        self.position = newpos
+        self.position = new_pos
         print(f"Card ID {self.ID} is in position {self.position}")
 
     def delete(self, delay=0):
@@ -131,6 +136,7 @@ class SylladexCard(QLabel):
         else:
             self.setPixmap(self.punched)
         self.isPunched = not self.isPunched
+        self.raise_()
 
 
 class CardDisplay(QWidget):
@@ -138,7 +144,7 @@ class CardDisplay(QWidget):
     def __init__(self, parent=None):
         super(CardDisplay, self).__init__(parent)
         self.setWindowTitle("Sylladex Card Display")
-        #set size to fill the screen
+        # set size to fill the screen
         self.setGeometry(self.screen().availableGeometry())
 
         self.setWindowFlags(self.windowFlags() |
@@ -151,14 +157,14 @@ class CardDisplay(QWidget):
 
         self.show()
 
-    def screenModulo(self, point):
+    def screen_modulo(self, point):
         ds = self.screen().availableGeometry()
         return(QPoint(point.x() % ds.width() + ds.x(),
                       point.y() % ds.height() + ds.y()))
 
     def add_card(self, count):
         for i in range(0, count):
-            self.cards.append(SylladexCard(self, self.screenModulo(
+            self.cards.append(SylladexCard(self, self.screen_modulo(
                     OFFSET*len(self.cards)+START_POINT), i * OFFSET_DELAY))
             print(f"Card added. "
                   f"There are now {len(self.cards)} cards in the display.")
@@ -167,7 +173,7 @@ class CardDisplay(QWidget):
         self.cards.pop(position).delete()
         for i in range(position, len(self.cards)):
             self.cards[i].move_animation(
-                    self.screenModulo(self.cards[i].position-OFFSET),
+                    self.screen_modulo(self.cards[i].position-OFFSET),
                     DESTROY_FILL_DURATION,
                     DESTROY_FILL_DELAY*(i-position))
         print(f"Removed card from position {position}, "
@@ -245,7 +251,7 @@ class MainWindow(QDialog):
             value = int(self.entryField.text())
         except ValueError:
             value = 1
-        value -= 1 # we're indexing an array
+        value -= 1  # we're indexing an array
 
         self.display.drop_card(value)
 
@@ -265,7 +271,8 @@ class MainWindow(QDialog):
         self.display.destroy_self()
         self.display = self.initialize_display()
 
-    def on_break(self):
+    @staticmethod
+    def on_break():
         print("coffee...")
 
 

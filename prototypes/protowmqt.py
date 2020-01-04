@@ -7,6 +7,7 @@ from PySide2.QtGui import QPixmap
 # default image for new cards:
 IMAGE_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\card.png"
 PUNCHED_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\punched.png"
+CROSS_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\cross.png"
 # offset to use when fading in new cards:
 OFFSET = QPoint(50, 50)
 OFFSET_DELAY = 0.05
@@ -18,10 +19,41 @@ DESTROY_OFFSET = QPoint(0, -100)
 DESTROY_DURATION = 0.1
 DESTROY_FILL_DURATION = 0.1
 DESTROY_FILL_DELAY = 0.05
+#
+TOGGLE_DELAY = 0.3
+TOGGLE_COUNT = 3
 # spacing between cards:
 CARD_SPACE = 50
 # xy location of the first card:
 START_POINT = QPoint(100, 100)
+
+class CardOverlay(QLabel):
+    def __init__(self, parent, pixmap):
+        super(CardOverlay, self).__init__(parent.parent())
+        self.setPixmap(pixmap)
+        self.move(parent.geometry().center()-pixmap.rect().center())
+
+        # not relevant right now but still:
+        # https://eli.thegreenplace.net/2011/04/25/passing-extra-arguments-to-pyqt-slot
+        self.togglecount = 0
+        self.timer = QTimer(self)
+        self.timer.setInterval(TOGGLE_DELAY*1000)
+        self.timer.timeout.connect(self.toggle)
+        self.timer.start()
+
+    def toggle(self):
+        self.togglecount += 1
+        if self.togglecount > (TOGGLE_COUNT*2-1):
+            self.end_toggle()
+        else:
+            if self.isVisibleTo(self.parent()):
+                self.hide()
+            else:
+                self.show()
+
+    def end_toggle(self):
+        self.hide()
+        self.deleteLater()
 
 
 class SylladexCard(QLabel):
@@ -66,6 +98,7 @@ class SylladexCard(QLabel):
         # http://zetcode.com/pyqt/qpropertyanimation/
         print(f"moving from {oldvalue} to {newvalue}")
         animation.setDuration((duration + delay) * 1000)
+        animation.setKeyValueAt(delay/(duration+delay), oldvalue)
         animation.setStartValue(oldvalue)
         animation.setEndValue(newvalue)
         animation.start()
@@ -88,6 +121,9 @@ class SylladexCard(QLabel):
         self.move_animation(self.position+DESTROY_OFFSET,
                             DESTROY_DURATION, delay)
         QTimer.singleShot(int((delay+DESTROY_DURATION)*1000), self.deleteLater)
+
+    def flash_invalid(self):
+        CardOverlay(self, QPixmap(CROSS_PATH))
 
     def mousePressEvent(self, event):
         if self.isPunched:
@@ -130,14 +166,15 @@ class CardDisplay(QWidget):
     def drop_card(self, position):
         self.cards.pop(position).delete()
         for i in range(position, len(self.cards)):
-            self.cards[i].move_animation(self.cards[i].position-OFFSET,
-                                         DESTROY_FILL_DURATION,
-                                         DESTROY_FILL_DELAY*i)
+            self.cards[i].move_animation(
+                    self.screenModulo(self.cards[i].position-OFFSET),
+                    DESTROY_FILL_DURATION,
+                    DESTROY_FILL_DELAY*(i-position))
         print(f"Removed card from position {position}, "
               f"there are now {len(self.cards)}.")
 
     def x_card(self, position):
-        pass
+        self.cards[position].flash_invalid()
 
     def clear_cards(self):
         pass

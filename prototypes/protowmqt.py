@@ -1,5 +1,5 @@
 import sys
-from PySide2.QtCore import Qt, Signal, QPoint, QPropertyAnimation
+from PySide2.QtCore import Qt, Signal, QPoint, QPropertyAnimation, QTimer
 from PySide2.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, \
     QVBoxLayout, QWidget, QLabel, QGraphicsOpacityEffect
 from PySide2.QtGui import QPixmap
@@ -11,10 +11,13 @@ PUNCHED_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\punched.p
 OFFSET = QPoint(50, 50)
 OFFSET_DELAY = 0.05
 # time duration to fade in a card:
-FADE_IN_DURATION = 0.5
 FADE_IN_POSITION = QPoint(-30, -30)
+FADE_IN_DURATION = 0.5
 # card destruction offset:
-DESTROY_OFFSET = [0, -100]
+DESTROY_OFFSET = QPoint(0, -100)
+DESTROY_DURATION = 0.1
+DESTROY_FILL_DURATION = 0.1
+DESTROY_FILL_DELAY = 0.05
 # spacing between cards:
 CARD_SPACE = 50
 # xy location of the first card:
@@ -42,13 +45,11 @@ class SylladexCard(QLabel):
 
         self.position = startpoint+FADE_IN_POSITION
         self.move(self.position)
-        self.moveani = QPropertyAnimation(self, b"pos")
 
         self.alpha = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.alpha)
         self.alpha.setOpacity(0)
         self.alphaValue = 0
-        self.fadeani = QPropertyAnimation(self.alpha, b"opacity")
 
         self.IDLabel = QLabel(str(self.ID), self)
         self.IDLabel.move(15, 18)
@@ -63,24 +64,30 @@ class SylladexCard(QLabel):
     def arbitrary_animation(animation, oldvalue, newvalue,
                             duration, delay=0.0):
         # http://zetcode.com/pyqt/qpropertyanimation/
+        print(f"moving from {oldvalue} to {newvalue}")
         animation.setDuration((duration + delay) * 1000)
         animation.setStartValue(oldvalue)
-        animation.setKeyValueAt(delay/(delay+duration), oldvalue)
         animation.setEndValue(newvalue)
         animation.start()
 
     def fade_animation(self, newalpha, duration, delay=0.0):
+        self.fadeani = QPropertyAnimation(self.alpha, b"opacity")
         self.arbitrary_animation(self.fadeani, self.alphaValue, newalpha,
                                  duration, delay)
         self.alphaValue = newalpha
 
     def move_animation(self, newpos, duration, delay=0.0):
+        self.moveani = QPropertyAnimation(self, b"pos")
         self.arbitrary_animation(self.moveani, self.position, newpos,
                                  duration, delay)
         self.position = newpos
+        print(f"Card ID {self.ID} is in position {self.position}")
 
-    def tick(self):
-        pass
+    def delete(self, delay=0):
+        self.fade_animation(0.5, DESTROY_DURATION, delay)
+        self.move_animation(self.position+DESTROY_OFFSET,
+                            DESTROY_DURATION, delay)
+        QTimer.singleShot(int((delay+DESTROY_DURATION)*1000), self.deleteLater)
 
     def mousePressEvent(self, event):
         if self.isPunched:
@@ -117,7 +124,26 @@ class CardDisplay(QWidget):
         for i in range(0, count):
             self.cards.append(SylladexCard(self, self.screenModulo(
                     OFFSET*len(self.cards)+START_POINT), i * OFFSET_DELAY))
-            print(f"Card added - there are now {len(self.cards)} cards in the display.")
+            print(f"Card added. "
+                  f"There are now {len(self.cards)} cards in the display.")
+
+    def drop_card(self, position):
+        self.cards.pop(position).delete()
+        for i in range(position, len(self.cards)):
+            self.cards[i].move_animation(self.cards[i].position-OFFSET,
+                                         DESTROY_FILL_DURATION,
+                                         DESTROY_FILL_DELAY*i)
+        print(f"Removed card from position {position}, "
+              f"there are now {len(self.cards)}.")
+
+    def x_card(self, position):
+        pass
+
+    def clear_cards(self):
+        pass
+
+    def destroy_self(self):
+        pass
 
 
 class MainWindow(QDialog):
@@ -155,6 +181,9 @@ class MainWindow(QDialog):
         self.textButton.clicked.connect(self.on_press)
         self.breakButton.clicked.connect(self.on_break)
         self.addCardButton.clicked.connect(self.on_add)
+        self.dropCardButton.clicked.connect(self.on_drop)
+        self.invalidCardButton.clicked.connect(self.on_invalid)
+        self.clearAllButton.clicked.connect(self.on_clear)
 
     def initialize_display(self):
         return CardDisplay(self)
@@ -173,6 +202,31 @@ class MainWindow(QDialog):
             value = 1
 
         self.display.add_card(value)
+
+    def on_drop(self):
+        try:
+            value = int(self.entryField.text())
+        except ValueError:
+            value = 1
+        value -= 1 # we're indexing an array
+
+        self.display.drop_card(value)
+
+    def on_invalid(self):
+        try:
+            value = int(self.entryField.text())
+        except ValueError:
+            value = 1
+        value -= 1
+
+        self.display.x_card(value)
+
+    def on_clear(self):
+        self.display.clear_cards()
+
+    def on_reset(self):
+        self.display.destroy_self()
+        self.display = self.initialize_display()
 
     def on_break(self):
         print("coffee...")

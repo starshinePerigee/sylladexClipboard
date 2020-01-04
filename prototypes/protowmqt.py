@@ -1,7 +1,8 @@
 import sys
 from PySide2.QtCore import Qt, Signal, QPoint, QPropertyAnimation, QTimer
 from PySide2.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, \
-    QVBoxLayout, QWidget, QLabel, QGraphicsOpacityEffect
+    QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsObject, QLabel, \
+    QGraphicsOpacityEffect
 from PySide2.QtGui import QPixmap
 
 # default image for new cards:
@@ -56,7 +57,7 @@ class CardOverlay(QLabel):
         self.deleteLater()
 
 
-class SylladexCard(QLabel):
+class SylladexCard(QGraphicsObject):
     clicked = Signal(str)
     # there is currently an issue where label clickable bounding boxes are
     # rectangles only - this would need to inherit from QGraphicsObject
@@ -133,19 +134,24 @@ class SylladexCard(QLabel):
         self.isPunched = not self.isPunched
 
 
-class CardDisplay(QWidget):
+class CardDisplay(QGraphicsView):
 
     def __init__(self, parent=None):
         super(CardDisplay, self).__init__(parent)
         self.setWindowTitle("Sylladex Card Display")
-        #set size to fill the screen
+        # set size to fill the screen
         self.setGeometry(self.screen().availableGeometry())
 
+        # possibly useful: https://stackoverflow.com/questions/19383427/blur-effect-over-a-qwidget-in-qt/19386886#19386886
         self.setWindowFlags(self.windowFlags() |
                             Qt.Tool |
                             Qt.FramelessWindowHint |
                             Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setStyleSheet("background: transparent")
+
+        self.scene = QGraphicsScene()
+        self.scene.addPixmap(QPixmap(IMAGE_PATH))
 
         self.cards = []
 

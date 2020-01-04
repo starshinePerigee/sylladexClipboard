@@ -183,10 +183,11 @@ class CardDisplay(QWidget):
         self.cards[position].flash_invalid()
 
     def clear_cards(self):
-        pass
+        for i in range(0, len(self.cards)):
+            self.cards[i].delete(DESTROY_FILL_DELAY*i)
 
     def destroy_self(self):
-        pass
+        self.deleteLater()
 
 
 class MainWindow(QDialog):
@@ -227,6 +228,7 @@ class MainWindow(QDialog):
         self.dropCardButton.clicked.connect(self.on_drop)
         self.invalidCardButton.clicked.connect(self.on_invalid)
         self.clearAllButton.clicked.connect(self.on_clear)
+        self.resetSylButton.clicked.connect(self.on_reset)
 
     def initialize_display(self):
         return CardDisplay(self)

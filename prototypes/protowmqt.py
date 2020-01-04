@@ -1,32 +1,34 @@
 import sys
-from PySide2.QtCore import Qt, Signal, QPoint
+from PySide2.QtCore import Qt, Signal, QPoint, QPropertyAnimation
 from PySide2.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, \
-    QVBoxLayout, QWidget, QLabel
+    QVBoxLayout, QWidget, QLabel, QGraphicsOpacityEffect
 from PySide2.QtGui import QPixmap
 
 # default image for new cards:
 IMAGE_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\card.png"
 PUNCHED_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\punched.png"
 # offset to use when fading in new cards:
-OFFSET = 30
+OFFSET = QPoint(50, 50)
+OFFSET_DELAY = 0.05
 # time duration to fade in a card:
 FADE_IN_DURATION = 0.5
+FADE_IN_POSITION = QPoint(-30, -30)
 # card destruction offset:
 DESTROY_OFFSET = [0, -100]
 # spacing between cards:
 CARD_SPACE = 50
 # xy location of the first card:
-START_POINT = 100
+START_POINT = QPoint(100, 100)
 
 
 class SylladexCard(QLabel):
     clicked = Signal(str)
     # there is currently an issue where label clickable bounding boxes are
-    # rectangles only - this would need to inherit from qgraphicsobject
+    # rectangles only - this would need to inherit from QGraphicsObject
     # ref https://stackoverflow.com/questions/29372383/qt-mousepressevent-modify-the-clickable-area
     runningID = 0
 
-    def __init__(self, parent=None, startpoint=QPoint(0,0)):
+    def __init__(self, parent=None, startpoint=QPoint(0, 0), delay=0.0):
         self.ID = SylladexCard.runningID
         SylladexCard.runningID += 1
 
@@ -38,12 +40,47 @@ class SylladexCard(QLabel):
         self.isPunched = False
         self.setPixmap(self.unpunched)
 
+        self.position = startpoint+FADE_IN_POSITION
+        self.move(self.position)
+        self.moveani = QPropertyAnimation(self, b"pos")
+
+        self.alpha = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.alpha)
+        self.alpha.setOpacity(0)
+        self.alphaValue = 0
+        self.fadeani = QPropertyAnimation(self.alpha, b"opacity")
+
         self.IDLabel = QLabel(str(self.ID), self)
         self.IDLabel.move(15, 18)
         self.IDLabel.show()
 
-        self.move(startpoint)
+        self.fade_animation(1, FADE_IN_DURATION, delay)
+        self.move_animation(startpoint, FADE_IN_DURATION, delay)
+
         self.show()
+
+    @staticmethod
+    def arbitrary_animation(animation, oldvalue, newvalue,
+                            duration, delay=0.0):
+        # http://zetcode.com/pyqt/qpropertyanimation/
+        animation.setDuration((duration + delay) * 1000)
+        animation.setStartValue(oldvalue)
+        animation.setKeyValueAt(delay/(delay+duration), oldvalue)
+        animation.setEndValue(newvalue)
+        animation.start()
+
+    def fade_animation(self, newalpha, duration, delay=0.0):
+        self.arbitrary_animation(self.fadeani, self.alphaValue, newalpha,
+                                 duration, delay)
+        self.alphaValue = newalpha
+
+    def move_animation(self, newpos, duration, delay=0.0):
+        self.arbitrary_animation(self.moveani, self.position, newpos,
+                                 duration, delay)
+        self.position = newpos
+
+    def tick(self):
+        pass
 
     def mousePressEvent(self, event):
         if self.isPunched:
@@ -77,10 +114,9 @@ class CardDisplay(QWidget):
                       point.y() % ds.height() + ds.y()))
 
     def add_card(self, count):
-        for __ in range(0, count):
+        for i in range(0, count):
             self.cards.append(SylladexCard(self, self.screenModulo(
-                    QPoint(OFFSET*len(self.cards)+START_POINT,
-                    OFFSET*len(self.cards)+START_POINT))))
+                    OFFSET*len(self.cards)+START_POINT), i * OFFSET_DELAY))
             print(f"Card added - there are now {len(self.cards)} cards in the display.")
 
 

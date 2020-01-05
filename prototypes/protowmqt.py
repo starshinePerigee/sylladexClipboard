@@ -1,21 +1,18 @@
 import sys
-from PySide2.QtCore import Qt, Signal, QPoint, QPropertyAnimation, QTimer
-from PySide2.QtWidgets import QApplication, QDialog, QLineEdit, QPushButton, \
-    QVBoxLayout, QWidget, QLabel, QGraphicsOpacityEffect
-from PySide2.QtGui import QPixmap
+from PySide2 import QtCore, QtWidgets, QtGui
 
 # default image for new cards:
 IMAGE_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\card.png"
 PUNCHED_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\punched.png"
 CROSS_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\cross.png"
 # offset to use when fading in new cards:
-OFFSET = QPoint(50, 50)
+OFFSET = QtCore.QPoint(50, 50)
 OFFSET_DELAY = 0.05
 # time duration to fade in a card:
-FADE_IN_POSITION = QPoint(-30, -30)
+FADE_IN_POSITION = QtCore.QPoint(-30, -30)
 FADE_IN_DURATION = 0.5
 # card destruction offset:
-DESTROY_OFFSET = QPoint(0, -100)
+DESTROY_OFFSET = QtCore.QPoint(0, -100)
 DESTROY_DURATION = 0.1
 DESTROY_FILL_DURATION = 0.1
 DESTROY_FILL_DELAY = 0.05
@@ -25,10 +22,10 @@ TOGGLE_COUNT = 3
 # spacing between cards:
 CARD_SPACE = 50
 # xy location of the first card:
-START_POINT = QPoint(100, 100)
+START_POINT = QtCore.QPoint(100, 100)
 
 
-class CardOverlay(QLabel):
+class CardOverlay(QtWidgets.QLabel):
     def __init__(self, parent, pixmap):
         super(CardOverlay, self).__init__(parent.parent())
         self.setPixmap(pixmap)
@@ -39,8 +36,8 @@ class CardOverlay(QLabel):
         # not relevant right now but still:
         # https://eli.thegreenplace.net/2011/04/25/passing-extra-arguments-to-pyqt-slot
         self.togglecount = 0
-        self.timer = QTimer(self)
-        self.timer.setInterval(TOGGLE_DELAY*1000)
+        self.timer = QtCore.QTimer(self)
+        self.timer.setInterval(int(TOGGLE_DELAY*1000))
         self.timer.timeout.connect(self.toggle)
         self.timer.start()
 
@@ -59,22 +56,22 @@ class CardOverlay(QLabel):
         self.deleteLater()
 
 
-class SylladexCard(QLabel):
-    clicked = Signal(str)
+class SylladexCard(QtWidgets.QLabel):
+    clicked = QtCore.Signal(str)
     # there is currently an issue where label clickable bounding boxes are
     # rectangles only - this would need to inherit from QGraphicsObject
     # ref https://stackoverflow.com/questions/29372383/qt-mousepressevent-modify-the-clickable-area
     runningID = 0
 
-    def __init__(self, parent=None, startpoint=QPoint(0, 0), delay=0.0):
+    def __init__(self, parent=None, startpoint=QtCore.QPoint(0, 0), delay=0.0):
         self.ID = SylladexCard.runningID
         SylladexCard.runningID += 1
 
         super(SylladexCard, self).__init__(parent)
         self.clicked.connect(self.mousePressEvent)
 
-        self.unpunched = QPixmap(IMAGE_PATH)
-        self.punched = QPixmap(PUNCHED_PATH)
+        self.unpunched = QtGui.QPixmap(IMAGE_PATH)
+        self.punched = QtGui.QPixmap(PUNCHED_PATH)
         self.isPunched = False
         self.setPixmap(self.unpunched)
 
@@ -82,13 +79,13 @@ class SylladexCard(QLabel):
         self.move(self.position)
         self.move_ani = None
 
-        self.alpha = QGraphicsOpacityEffect(self)
+        self.alpha = QtWidgets.QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.alpha)
         self.alpha.setOpacity(0)
         self.alphaValue = 0
         self.fade_ani = None
 
-        self.IDLabel = QLabel(str(self.ID), self)
+        self.IDLabel = QtWidgets.QLabel(str(self.ID), self)
         self.IDLabel.move(15, 18)
         self.IDLabel.show()
 
@@ -100,22 +97,24 @@ class SylladexCard(QLabel):
     @staticmethod
     def arbitrary_animation(animation, oldvalue, newvalue,
                             duration, delay=0.0):
-        # http://zetcode.com/pyqt/qpropertyanimation/
-        print(f"moving from {oldvalue} to {newvalue}")
+        # http://zetcode.com/pyqt/QtCore.QPropertyAnimation/
+        # print(f"moving from {oldvalue} to {newvalue}")
         animation.setDuration((duration + delay) * 1000)
         animation.setKeyValueAt(delay/(duration+delay), oldvalue)
         animation.setStartValue(oldvalue)
         animation.setEndValue(newvalue)
         animation.start()
 
+    # noinspection PyTypeChecker
     def fade_animation(self, new_alpha, duration, delay=0.0):
-        self.fade_ani = QPropertyAnimation(self.alpha, b"opacity")
+        self.fade_ani = QtCore.QPropertyAnimation(self.alpha, b"opacity")
         self.arbitrary_animation(self.fade_ani, self.alphaValue, new_alpha,
                                  duration, delay)
         self.alphaValue = new_alpha
 
+    # noinspection PyTypeChecker
     def move_animation(self, new_pos, duration, delay=0.0):
-        self.move_ani = QPropertyAnimation(self, b"pos")
+        self.move_ani = QtCore.QPropertyAnimation(self, b"pos")
         self.arbitrary_animation(self.move_ani, self.position, new_pos,
                                  duration, delay)
         self.position = new_pos
@@ -125,10 +124,11 @@ class SylladexCard(QLabel):
         self.fade_animation(0.5, DESTROY_DURATION, delay)
         self.move_animation(self.position+DESTROY_OFFSET,
                             DESTROY_DURATION, delay)
-        QTimer.singleShot(int((delay+DESTROY_DURATION)*1000), self.deleteLater)
+        QtCore.QTimer.singleShot(int((delay+DESTROY_DURATION)*1000),
+                                 self.deleteLater)
 
     def flash_invalid(self):
-        CardOverlay(self, QPixmap(CROSS_PATH))
+        CardOverlay(self, QtGui.QPixmap(CROSS_PATH))
 
     def mousePressEvent(self, event):
         if self.isPunched:
@@ -139,7 +139,7 @@ class SylladexCard(QLabel):
         self.raise_()
 
 
-class CardDisplay(QWidget):
+class CardDisplay(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(CardDisplay, self).__init__(parent)
@@ -148,10 +148,10 @@ class CardDisplay(QWidget):
         self.setGeometry(self.screen().availableGeometry())
 
         self.setWindowFlags(self.windowFlags() |
-                            Qt.Tool |
-                            Qt.FramelessWindowHint |
-                            Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+                            QtCore.Qt.Tool |
+                            QtCore.Qt.FramelessWindowHint |
+                            QtCore.Qt.WindowStaysOnTopHint)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
         self.cards = []
 
@@ -159,8 +159,8 @@ class CardDisplay(QWidget):
 
     def screen_modulo(self, point):
         ds = self.screen().availableGeometry()
-        return(QPoint(point.x() % ds.width() + ds.x(),
-                      point.y() % ds.height() + ds.y()))
+        return(QtCore.QPoint(point.x() % ds.width() + ds.x(),
+                             point.y() % ds.height() + ds.y()))
 
     def add_card(self, count):
         for i in range(0, count):
@@ -185,34 +185,35 @@ class CardDisplay(QWidget):
     def clear_cards(self):
         for i in range(0, len(self.cards)):
             self.cards[i].delete(DESTROY_FILL_DELAY*i)
+        self.cards = []
 
     def destroy_self(self):
         self.deleteLater()
 
 
-class MainWindow(QDialog):
+class MainWindow(QtWidgets.QDialog):
     """The parent window with controls"""
     def __init__(self, parent=None):
         super(MainWindow, self).__init__(parent)
         self.setWindowTitle("Sylladex Display Manager Test")
 
         # create widgets and add to layout:
-        layout = QVBoxLayout()
-        self.entryField = QLineEdit("")
+        layout = QtWidgets.QVBoxLayout()
+        self.entryField = QtWidgets.QLineEdit("")
         layout.addWidget(self.entryField)
-        self.textButton = QPushButton("Read Text")
+        self.textButton = QtWidgets.QPushButton("Read Text")
         layout.addWidget(self.textButton)
-        self.addCardButton = QPushButton("Add Card")
+        self.addCardButton = QtWidgets.QPushButton("Add Card")
         layout.addWidget(self.addCardButton)
-        self.dropCardButton = QPushButton("Drop Card")
+        self.dropCardButton = QtWidgets.QPushButton("Drop Card")
         layout.addWidget(self.dropCardButton)
-        self.invalidCardButton = QPushButton("Invalid Card")
+        self.invalidCardButton = QtWidgets.QPushButton("Invalid Card")
         layout.addWidget(self.invalidCardButton)
-        self.clearAllButton = QPushButton("Clear All")
+        self.clearAllButton = QtWidgets.QPushButton("Clear All")
         layout.addWidget(self.clearAllButton)
-        self.resetSylButton = QPushButton("Reset Sylladex")
+        self.resetSylButton = QtWidgets.QPushButton("Reset Sylladex")
         layout.addWidget(self.resetSylButton)
-        self.breakButton = QPushButton("Break")
+        self.breakButton = QtWidgets.QPushButton("Break")
         layout.addWidget(self.breakButton)
 
         # Set dialog layout
@@ -280,7 +281,7 @@ class MainWindow(QDialog):
 
 if __name__ == '__main__':
     # Create the Qt Application
-    app = QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     # Create and show the form
     mainWindow = MainWindow()
     mainWindow.show()

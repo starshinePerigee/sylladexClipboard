@@ -22,6 +22,7 @@ AREA_PATH = os.path.join(protodir, r"cardarea.png")
 # TODO: make clipboardformat a class
 
 
+# noinspection PyUnusedLocal
 class ClipboardRenderer:
     # standard format names:
     # https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
@@ -79,11 +80,11 @@ class ClipboardRenderer:
 
     def get_all_types(self):
         data = []
-        type = 0
+        cb_type = 0
         clip.OpenClipboard()
-        while clip.EnumClipboardFormats(type) != 0:
-            type = clip.EnumClipboardFormats(type)
-            data.append((type, self.translate_format(type)))
+        while clip.EnumClipboardFormats(cb_type) != 0:
+            cb_type = clip.EnumClipboardFormats(cb_type)
+            data.append((cb_type, self.translate_format(cb_type)))
         clip.CloseClipboard()
         return data
 
@@ -131,10 +132,10 @@ class ClipboardRenderer:
 
     def render_html_text(self, cb_format):
         text = str(self.read_single(cb_format))
-        start_delimter = "<html>"
-        end_delimter = "</html>"
-        text = text[text.find(start_delimter):]
-        text = text[:text.rfind(end_delimter)+len(end_delimter)]
+        start_delimiter = "<html>"
+        end_delimiter = "</html>"
+        text = text[text.find(start_delimiter):]
+        text = text[:text.rfind(end_delimiter)+len(end_delimiter)]
         return text
 
     def render_bitmap(self, cb_format):
@@ -154,7 +155,6 @@ class MainWindow(QtWidgets.QDialog):
         self.resize(480, 240)
         layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
-
 
         self.entryButton = QtWidgets.QPushButton("Get Clipboard")
 

@@ -19,6 +19,8 @@ protodir = os.path.dirname(os.path.realpath(__file__))
 IMAGE_PATH = os.path.join(protodir, r"card.png")
 AREA_PATH = os.path.join(protodir, r"cardarea.png")
 
+# TODO: make clipboardformat a class
+
 
 class ClipboardRenderer:
     # standard format names:
@@ -199,8 +201,15 @@ class MainWindow(QtWidgets.QDialog):
 
         self.text.setText("<br>".join(text))
 
+        reject_names = (14,  # ENHMETAFILE
+                        49161  # DataObject
+                        )
+
         if len(types) > 0:
-            self.typelabel.setText(str(types[0][1])[0:80])
+            if int(types[0][0]) in reject_names and len(types) > 1:
+                self.typelabel.setText(str(types[1][1])[0:80])
+            else:
+                self.typelabel.setText(str(types[0][1])[0:80])
         else:
             self.typelabel.setText("NULL")
 

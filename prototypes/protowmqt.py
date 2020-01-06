@@ -1,10 +1,12 @@
 import sys
 from PySide2 import QtCore, QtWidgets, QtGui
+import os
 
 # default image for new cards:
-IMAGE_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\card.png"
-PUNCHED_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\punched.png"
-CROSS_PATH = r"C:\Users\McGiffenK\Desktop\testpy\sylladex\prototypes\cross.png"
+protodir = os.path.dirname(os.path.realpath(__file__))
+IMAGE_PATH = os.path.join(protodir, r"card.png")
+PUNCHED_PATH = os.path.join(protodir, r"punched.png")
+CROSS_PATH = os.path.join(protodir, r"cross.png")
 # offset to use when fading in new cards:
 OFFSET = QtCore.QPoint(50, 50)
 OFFSET_DELAY = 0.05

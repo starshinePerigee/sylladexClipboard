@@ -18,7 +18,7 @@ import ipdb
 import pywintypes
 import win32clipboard as clip
 
-# standard format names:
+# standard cb_format names:
 # https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
 STANDARDFORMATS = {
     2: "CF_BITMAP",
@@ -50,7 +50,7 @@ STANDARDFORMATS = {
 }
 
 
-def type_to_str(target):
+def types_to_str(target):
     try:
         types = []
         for i in target:
@@ -68,11 +68,11 @@ def print_subset(item, length=80):
     return cstring
 
 
-def translate_format(format):
-    if format in STANDARDFORMATS:
-        return "standard format " + STANDARDFORMATS[format]
-    # print("looking up " + str(format))
-    return clip.GetClipboardFormatName(format)
+def translate_format(cb_format):
+    if cb_format in STANDARDFORMATS:
+        return "standard cb_format " + STANDARDFORMATS[cb_format]
+    # print("looking up " + str(cb_format))
+    return clip.GetClipboardFormatName(cb_format)
 
 
 def write_clipboard(data, formats):
@@ -94,31 +94,31 @@ def write_clipboard(data, formats):
                           "' is invalid. Skipping...")
 
 
-def read_single(format):
-    # print("Reading " + translate_format(format) + " (" + str(format) + ")")
-    if format == 3:  # CF_METAFILEPICT NOT SUPPORTED BY win32clipboard
+def read_single(cb_format):
+    # print("Reading " + translate_format(cb_format) + " (" + str(cb_format) + ")")
+    if cb_format == 3:  # CF_METAFILEPICT NOT SUPPORTED BY win32clipboard
         print("CF_METAFILEPICT not supported by win32clipboard! Returning -1")
         return -1
     try:
-        return clip.GetClipboardData(format)
+        return clip.GetClipboardData(cb_format)
     except TypeError:
-        print("CLIPBOARD FORMAT UNAVAILABLE: " + translate_format(format) +
-              " (" + str(format) + ")")
+        print("CLIPBOARD FORMAT UNAVAILABLE: " + translate_format(cb_format) +
+              " (" + str(cb_format) + ")")
         return None
 
 
-def read_all(format):
-    if format is None:
+def read_all(cb_format):
+    if cb_format is None:
         return None
 
-    if isinstance(format, int):
-        return read_single(format)
+    if isinstance(cb_format, int):
+        return read_single(cb_format)
 
-    if len(format) == 0:
+    if len(cb_format) == 0:
         return None
 
     data = []
-    for f in format:
+    for f in cb_format:
         data.append(read_single(f[0]))
     return data
 
@@ -143,10 +143,10 @@ while not halt:
             print("seq#: " + str(clip.GetClipboardSequenceNumber()))
             cTypes = get_all_types()
             print("types: " + str(cTypes))
-            # print("type^2: " + type_to_str(cTypes))
+            # print("type^2: " + types_to_str(cTypes))
             cData = read_all(cTypes)
             print("data: " + print_subset(cData))
-            print("data type: " + type_to_str(cData))
+            print("data type: " + types_to_str(cData))
 
             # ipdb.set_trace()
             print("\r\n")
@@ -167,10 +167,10 @@ while not halt:
             print("new seq#: " + str(nSeqNumber))
             nTypes = get_all_types()
             print("new type: " + str(nTypes))
-            # print("new type^2: " + type_to_str(nTypes))
+            # print("new type^2: " + types_to_str(nTypes))
             nData = read_all(nTypes)
             print("new data: " + print_subset(nData))
-            print("new data type: " + type_to_str(nData))
+            print("new data type: " + types_to_str(nData))
             clip.CloseClipboard()
             seqNumber = clip.GetClipboardSequenceNumber()
             print("newest seq #: " + str(seqNumber))

@@ -19,11 +19,8 @@ protodir = os.path.dirname(os.path.realpath(__file__))
 IMAGE_PATH = os.path.join(protodir, r"card.png")
 AREA_PATH = os.path.join(protodir, r"cardarea.png")
 
-# TODO: make clipboardformat a class
 
-
-# noinspection PyUnusedLocal
-class ClipboardRenderer:
+class CBFormat:
     # standard format names:
     # https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
     STANDARD_FORMATS = {
@@ -55,53 +52,52 @@ class ClipboardRenderer:
         12: "CF_WAVE"
     }
 
+    @staticmethod
+    def translate_format(cb_format):
+        if cb_format in CBFormat.STANDARD_FORMATS:
+            # return "standard format " + \
+            #        ClipboardRenderer.STANDARD_FORMATS[CBFormat]
+            return CBFormat.STANDARD_FORMATS[cb_format][3:]
+        return clip.GetClipboardFormatName(cb_format)
+
+    def __init__(self, format_id=None):
+        self.id = format_id
+        self.name = CBFormat.translate_format(self.id)
+
+    def __str__(self):
+        return self.name + f" ({self.id})"
+
+
+# noinspection PyUnusedLocal
+class ClipboardRenderer:
     def __init__(self, area):
         self.bound_rect = area.geometry()
         self.last_pillow = None
 
     @staticmethod
-    def types_to_str(target):
-        try:
-            types = []
-            for i in target:
-                types.append(type(i))
-            return (str(len(target)) + "-element " + str(type(target)) +
-                    ": " + str(types))
-        except TypeError:
-            return str(type(target))
-
-    @staticmethod
-    def translate_format(cb_format):
-        if cb_format in ClipboardRenderer.STANDARD_FORMATS:
-            # return "standard format " + \
-            #        ClipboardRenderer.STANDARD_FORMATS[cb_format]
-            return ClipboardRenderer.STANDARD_FORMATS[cb_format][3:]
-        return clip.GetClipboardFormatName(cb_format)
-
-    def get_all_types(self):
+    def get_all_types():
         data = []
         cb_type = 0
         clip.OpenClipboard()
         while clip.EnumClipboardFormats(cb_type) != 0:
             cb_type = clip.EnumClipboardFormats(cb_type)
-            data.append((cb_type, self.translate_format(cb_type)))
+            data.append(CBFormat(cb_type))
         clip.CloseClipboard()
         return data
 
-    def read_single(self, cb_format):
-        # print("Reading " + translate_format(cb_format) + " (" + str(cb_format) + ")")
-        if cb_format == 3:  # CF_METAFILEPICT NOT SUPPORTED BY win32clipboard
+    @staticmethod
+    def read_single(cb_format):
+        # print("Reading " + translate_format(CBFormat) + " (" + str(CBFormat) + ")")
+        if cb_format.id == 3:  # CF_METAFILEPICT NOT SUPPORTED BY win32clipboard
             print("CF_METAFILEPICT not supported by win32clipboard! Returning -1")
             return -1
         try:
             clip.OpenClipboard()
-            data = clip.GetClipboardData(cb_format)
+            data = clip.GetClipboardData(cb_format.id)
             clip.CloseClipboard()
             return data
         except TypeError:
-            print("CLIPBOARD FORMAT UNAVAILABLE: " +
-                  self.translate_format(cb_format) +
-                  " (" + str(cb_format) + ")")
+            print(f"CLIPBOARD FORMAT UNAVAILABLE: {str(cb_format)}")
             return None
 
     def draw_area(self):
@@ -117,17 +113,18 @@ class ClipboardRenderer:
             return ""
 
         for cb_type in cb_types:
-            if cb_type[0] in disambiguate:
-                return disambiguate[cb_type[0]](cb_type[0])
+            if cb_type.id in disambiguate:
+                return disambiguate[cb_type.id](cb_type)
 
-        return "<" + str(cb_types[0][1]) + ">"
+        return "<" + str(cb_types[0].name) + ">"
 
     def disambiguate_draw(self):
         pass
 
     def render_text(self, cb_format):
         text = str(self.read_single(cb_format))
-        text = text.replace("\\r\\n", "<br>")[2:]
+        text = text.replace("\\n", "<br>").replace("\\r", "")[2:]
+        # print(text)
         return text
 
     def render_html_text(self, cb_format):
@@ -136,6 +133,8 @@ class ClipboardRenderer:
         end_delimiter = "</html>"
         text = text[text.find(start_delimiter):]
         text = text[:text.rfind(end_delimiter)+len(end_delimiter)]
+        text = text.replace("\\n", "<br>").replace("\\r", "")
+        # print(text)
         return text
 
     def render_bitmap(self, cb_format):
@@ -197,7 +196,7 @@ class MainWindow(QtWidgets.QDialog):
         text = []
         types = self.cb_renderer.get_all_types()
         for i in types:
-            text.append("<b>" + str(i[0]) + "</b>: " + str(i[1]))
+            text.append("<b>" + str(i.id) + "</b>: " + str(i.name))
 
         self.text.setText("<br>".join(text))
 
@@ -206,10 +205,10 @@ class MainWindow(QtWidgets.QDialog):
                         )
 
         if len(types) > 0:
-            if int(types[0][0]) in reject_names and len(types) > 1:
-                self.typelabel.setText(str(types[1][1])[0:80])
+            if int(types[0].id) in reject_names and len(types) > 1:
+                self.typelabel.setText(str(types[1].name)[0:80])
             else:
-                self.typelabel.setText(str(types[0][1])[0:80])
+                self.typelabel.setText(str(types[0].name)[0:80])
         else:
             self.typelabel.setText("NULL")
 

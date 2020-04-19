@@ -3,12 +3,15 @@ This prototypes threading using qthreads, as well as passing data between
 threads and dealing with long operation times (such as for clipboard rendering)
 """
 import sys
+import time
 from PySide2 import QtCore, QtWidgets
 
 # goal: manage 5 inputs and 3 outputs, but each input pipes to all four outputs
 # inputs: pyhook, clipboard, timer, UI button, and second UI window gaining focus
+# with button
 # outputs: print, qlabel text timestamped log, constantly animating widget,
-# child window (also has an animated back and forth widget), status display
+# child window (also has an animated back and forth widget and
+# progress bar), status display
 
 
 class ThreadMonitor():
@@ -50,12 +53,27 @@ class ThreadMonitor():
         self.status_label.setText(self.status)
 
 
+class AnimationIndicator(QtWidgets.QLabel):
+    def __init__(self, parent, startpos, endpos):
+        super(AnimationIndicator, self).__init__(parent)
+        self.setText("<>")
+        self.show()
+        # noinspection PyTypeChecker
+        self.moveAni = QtCore.QPropertyAnimation(self, b"pos")
+        self.moveAni.setDuration((endpos-startpos).manhattanLength()*8)
+        self.moveAni.setStartValue(startpos)
+        self.moveAni.setKeyValueAt(0.5, endpos)
+        self.moveAni.setEndValue(startpos)
+        self.moveAni.setLoopCount(-1)
+        self.moveAni.start()
+
+
 class ChildWindow(QtWidgets.QDialog):
     running_position = 100
 
     @staticmethod
     def running_pos():
-        ChildWindow.running_position += 200
+        ChildWindow.running_position += 300
         return ChildWindow.running_position
 
     def __init__(self, monitor, parent=None):
@@ -64,14 +82,14 @@ class ChildWindow(QtWidgets.QDialog):
         self.label = QtWidgets.QLabel(self)
         self.label.setText(monitor.name)
         self.label.show()
-        self.resize(120, 60)
+        self.resize(200, 100)
         self.move(ChildWindow.running_pos(), 200)
+
+        self.aniLabel = AnimationIndicator(self,
+                                           QtCore.QPoint(0, 80),
+                                           QtCore.QPoint(180, 80))
+
         self.show()
-
-
-class ThreadedWindow(ChildWindow):
-    def __init__(self, monitor, parent=None):
-        pass
 
 
 class MainWindow(QtWidgets.QDialog):
@@ -100,8 +118,19 @@ class MainWindow(QtWidgets.QDialog):
         self.monitors["Main Window"].attach(
             QtWidgets.QApplication.instance().thread())
 
+        self.indicator = AnimationIndicator(self,
+                                            QtCore.QPoint(0, 320),
+                                            QtCore.QPoint(440, 320))
+
         self.child_window = ChildWindow(self.monitors["Child Window"], self)
         # self.new_window = ChildWindow(self.monitors["New Window"])
+
+        self.run()
+
+    def run(self):
+        print("entering sleep")
+        time.sleep(5)
+        print("Exiting sleep")
 
 
 if __name__ == '__main__':

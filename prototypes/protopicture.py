@@ -104,6 +104,7 @@ class ClipboardRenderer:
         disambiguate = {
             1: self.render_text,
             2: self.render_bitmap,
+            49401: self.render_html_text,
             49446: self.render_html_text,  # HTML Text
             49158: self.render_text  # FileName
         }
@@ -169,7 +170,8 @@ class MainWindow(QtWidgets.QDialog):
         self.area.setGeometry(area_pixmap.rect())
         self.area.setMask(area_pixmap.mask())
         # self.area.move(24, 28) - for subset mask
-        self.area.move(15, 20)
+        # self.area.move(15, 20) - for small borders
+        self.area.move(13, 18)
         self.area.setAlignment(QtCore.Qt.AlignLeft)
         self.area.setAlignment(QtCore.Qt.AlignVCenter)
         # self.area.setWordWrap(True)

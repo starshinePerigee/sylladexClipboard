@@ -1,3 +1,19 @@
+Minimum viable product:
+
+Queue CB manager
+on start,
+
+
+
+
+
+
+
+
+
+
+
+
 how many parts are there to this application:
 
 - the top level manager: a taskbar widget, which has basic options and can also
@@ -17,9 +33,8 @@ prototypes:
 ///protokey: keyboard evesdropping
 ///protocb: clipboard management
 ///protowm: WX UI overlay and main window
-protopicture: turn clipboard info into graphical cards
+///protopicture: turn clipboard info into graphical cards
 ///prototopwidget: WX tray icon
-protoobvs: prototype observer pattern for passing data
 
 some random cool functions you could add as data types:
 

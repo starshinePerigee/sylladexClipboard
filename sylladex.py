@@ -1,14 +1,11 @@
 """ SYLLADEX CLIPBOARD MANAGER:
-    ~~~MAYBE NOT THE LITERALLY WORST IDEA~~~
+~~Version 0.00.01: Maybe not literally the worst idea~~
 
-Version 0.00.01 THIS IS STUPID
-
-this is the main funciton, numpnuts
-
-what ARE YOU evein DOING
+This module is responsible for loading, calling, and connecting all the
+individual parts of the sylladex application.
 
 8^Y
 """
 
-
-
+print("this is the main funciton, numpnuts")
+print("what ARE YOU evein DOING")

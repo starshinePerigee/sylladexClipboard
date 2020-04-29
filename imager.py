@@ -1,3 +1,3 @@
 """
-This is a threadded helper to draw sylladex card graphics from clipboard data.
+This is a threaded helper to draw sylladex card graphics from clipboard data.
 """

@@ -3,9 +3,9 @@ This module handles the tray icon, the right click context menu,
 and the global settings menu. The modus menu is handled by the modus file.
 
 Signals emitted:
-app_shutdown_now: halt all threads, close all windows, save settings.
-modus_menu_opened: instructs modus to open individual settings window.
-new_modus_loaded: emits a copy of the new modus to be instantiated over the
+app_shutdown_now(): halt all threads, close all windows, save settings.
+modus_menu_opened(): instructs modus to open individual settings window.
+new_modus_loaded(Modus): emits a copy of the new modus to be instantiated over the
         old modus. also tells that old modus to deconstruct
 
 """

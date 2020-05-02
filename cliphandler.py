@@ -195,6 +195,12 @@ class Clip:
     def __radd__(self, other):
         return Clip(other) + self
 
+    def __eq__(self, other):
+        return self.seq_num == other.seq_num and self.data == other.data
+
+    def __len__(self):
+        return len(self.data)
+
 
 class Handler:
     def __init__(self):

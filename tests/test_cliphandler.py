@@ -159,7 +159,7 @@ class TestDatum:
         result_reverse = add_target + my_datum
         assert "Clip" in type(result_reverse).__name__
         assert result_reverse.data[0].data == add_result
-        assert result_reverse.data[1].data == my_datum.data
+        assert result_reverse.data[-1].data == my_datum.data
 
     def test_add_none(self, my_datum):
         result_forward = my_datum + None

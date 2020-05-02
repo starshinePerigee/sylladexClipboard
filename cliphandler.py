@@ -90,7 +90,10 @@ class Format:
             self.name = None
 
     def __str__(self):
-        return f"{self.name} ({self.id})"
+        if self.id:
+            return f"{self.name} ({self.id})"
+        else:
+            return "NULL (0)"
 
     def __eq__(self, other):
         # return self.id == other.id and self.name == other.name
@@ -163,10 +166,8 @@ class Clip:
             data_type = type(data).__name__
             if data_type == "list" and list_recursion:
                 self._add_arg(data)
-            elif data_type in overload:
-                overload[data_type](data)
             else:
-                self._add_arg(data)
+                overload.get(data_type, self._add_arg)(data)
 
     def _add_datum(self, data):
         self.data += [data]

@@ -10,6 +10,20 @@ def does_not_raise():
     yield
 
 
+def find_data(data):
+    if isinstance(data, ch.Datum):
+        return data.data
+    elif isinstance(data, ch.Clip):
+        return data.data[0].data
+    elif isinstance(data, list):
+        if len(data) < 1:
+            return []
+        else:
+            return data[0]
+    else:
+        return data
+
+
 class TestFormat:
     test_pairs = [
         (13, "UNICODETEXT"),
@@ -41,12 +55,13 @@ class TestFormat:
         [
             (1, does_not_raise(), "None"),
             (-1, pytest.raises(pywintypes.error), "The handle is invalid"),
-            (None, pytest.raises(TypeError), "integer is required")
+            # (None, pytest.raises(TypeError), "integer is required"),
+            (3, pytest.raises(ValueError), "CF_METAFILEPICT format not supported")
         ]
     )
     def test_translate_errors(self, format_, expectation, description):
         with expectation as err_info:
-            ch.Format.translate_format(format_)
+            ch.Format(format_)
         assert description in str(err_info)
 
     def test_init(self, format_pair, my_format):
@@ -68,6 +83,23 @@ class TestFormat:
     def test_to_str(self, format_pair, my_format):
         assert str(format_pair[0]) in str(my_format) and \
                format_pair[1] in str(my_format)
+
+    def test_eq_ne(self):
+        format_str_1 = ch.Format(13)
+        format_str_2 = ch.Format.from_data("text")
+        assert format_str_1 == format_str_2
+        assert format_str_2 == format_str_1
+
+        format_html = ch.Format(49443)
+        assert format_str_1 != format_html
+        assert format_html != format_str_1
+
+        format_delta = ch.Format(13)
+        format_delta.name = "Not Unicode Text"
+        assert format_str_1 == format_delta
+        format_delta.id = 1
+        format_delta.name = format_str_1.name
+        assert format_str_1 != format_delta
 
 
 @pytest.fixture(params=[
@@ -93,14 +125,7 @@ def add_target(request):
 
 @pytest.fixture
 def add_result(add_target):
-    if isinstance(add_target, ch.Datum):
-        return add_target.data
-    elif isinstance(add_target, ch.Clip):
-        return add_target.data[0].data
-    elif isinstance(add_target, list):
-        return add_target[0]
-    else:
-        return add_target
+    return find_data(add_target)
 
 
 class TestDatum:
@@ -170,3 +195,72 @@ class TestDatum:
         assert "Clip" in type(result_reverse).__name__
         assert result_reverse.data[0].data == my_datum.data
         assert len(result_forward.data) == 1
+
+
+class TestClip:
+    @pytest.fixture(params=[
+        "test_single_str",
+        ch.Datum("<b>Html Text</b>", 49443),
+        ["str a", "str b", "str c"],
+        ch.Clip(["string_1", "string_2"]),
+        [[1, 2, 3], [4, 5], 6],
+        ["test", 1, None, b"bytes"],
+    ], ids=[
+        "clip_single_str",
+        "clip_single_datum_html",
+        "clip_list_3str",
+        "clip_from_clip_2str",
+        "clip_list_lists_3int",
+        "clip_list_mixd",
+    ])
+    def class_params(self, request):
+        return request.param
+
+    @pytest.fixture
+    def my_clip(self, class_params):
+        return ch.Clip(class_params)
+
+    @pytest.fixture
+    def clip_data(self, class_params):
+        return find_data(class_params)
+
+    running_ids = []
+
+    def test_init(self, my_clip, clip_data):
+        assert my_clip.data[0].data == clip_data
+        assert my_clip.seq_num not in TestClip.running_ids
+        TestClip.running_ids += [my_clip.seq_num]
+
+    @pytest.mark.parametrize(
+        "data, expectation, description",
+        [
+            (None, pytest.raises(IndexError), "list index out of range"),
+            ([], pytest.raises(IndexError), "list index out of range")
+        ],
+        ids= [
+            "clip_None",
+            "clip_empty"
+        ]
+    )
+    def test_init_errors(self, data, expectation, description):
+        clip = ch.Clip(data)
+        assert clip.seq_num < 0
+        assert "Clip" in type(clip).__name__
+        with expectation as err_info:
+            print(clip.data[0].data)
+        assert description in str(err_info.value)
+
+    def test_formats(self, my_clip, clip_data):
+        if clip_data == "<b>Html Text</b>":
+            pytest.xfail("HTML string detection not currently implemented.")
+        assert ch.Format.from_data(clip_data).name == my_clip.formats()[0].name
+
+    def test_add(self, my_clip, clip_data, add_target, add_result):
+        result_forward = my_clip + add_target
+        assert "Clip" in type(result_forward).__name__
+        assert result_forward.data[0].data == clip_data
+        assert result_forward.data[1].data == add_result
+        result_reverse = add_target + my_clip
+        assert "Clip" in type(result_reverse).__name__
+        assert result_reverse.data[0].data == add_result
+        assert result_reverse.data[-1].data == clip_data

@@ -72,11 +72,17 @@ class Format:
         if data_type in Format.python_formats:
             new_id = Format.python_formats[data_type]
         else:
-            new_id = 12
+            new_id = 13
         return Format(new_id)
 
     def __init__(self, format_id=None):
-        if format_id:
+        if isinstance(format_id, Format):
+            self.id = format_id.id
+            self.name = format_id.name
+        elif format_id:
+            if format_id == 3:  # CF_METAFILEPICT
+                raise ValueError("CF_METAFILEPICT format not supported "
+                                 "by win32clipboard!")
             self.id = format_id
             self.name = Format.translate_format(self.id)
         else:
@@ -86,18 +92,22 @@ class Format:
     def __str__(self):
         return f"{self.name} ({self.id})"
 
+    def __eq__(self, other):
+        # return self.id == other.id and self.name == other.name
+        return self.id == other.id
 
-class Single:
+    def __ne__(self, other):
+        return not self == other
+
+
+class Datum:
     """Contains a single clipboard data-format pair"""
-    def __init__(self, data=None, format=None):
+    def __init__(self, data=None, format_=None):
         self.data = data
-        if format is None:
+        if format_ is None:
             self.format = Format.from_data(data)
         else:
-            self.format = format
-        if format == 3:  # CF_METAFILEPICT
-            raise ValueError("CF_METAFILEPICT format not supported "
-                             "by win32clipboard!")
+            self.format = Format(format_)
 
     def string_preview(self, length=80):
         preview = str(self.data)
@@ -115,10 +125,13 @@ class Single:
         return Clip(other) + self
 
     def __eq__(self, other):
-        if isinstance(other, Single):
+        if isinstance(other, Datum):
             return self.data == other.data and self.format == other.format
         else:
             return False
+
+    def __ne__(self, other):
+        return not self == other
 
 
 class Clip:
@@ -140,32 +153,33 @@ class Clip:
         self.data = []
         self.add_data(data)
 
-    def add_data(self, data):
+    def add_data(self, data, list_recursion=False):
         overload = {
-            "Single": self._add_single,
+            "Datum": self._add_datum,
             "Clip": self._add_clip,
-            "list": self._add_list
+            "list": self._add_list,
         }
         if data is not None:
             data_type = type(data).__name__
-            if data_type in overload:
+            if data_type == "list" and list_recursion:
+                self._add_arg(data)
+            elif data_type in overload:
                 overload[data_type](data)
             else:
-                raise TypeError(f"Invalid type! Received {type(data)},"
-                                f"expected single, clip, list, or none.")
+                self._add_arg(data)
 
-    def _add_single(self, data):
+    def _add_datum(self, data):
         self.data += [data]
 
     def _add_list(self, data):
-        if isinstance(data[0], Single):
-            self.data += data
-        else:
-            raise TypeError(f"Invalid type present in list! Received "
-                            f"{type(data[0])}, expected list of Singles")
+        for i in data:
+            self.add_data(i, list_recursion=True)
 
     def _add_clip(self, data):
         self.data += data.data
+
+    def _add_arg(self, data):
+        self.data += [Datum(data)]
 
     def formats(self):
         return [x.format for x in self.data]
@@ -174,7 +188,9 @@ class Clip:
         return f"Clip {self.seq_num}"
 
     def __add__(self, other):
-        return Clip(self).add_data(other)
+        clip = Clip(self)
+        clip.add_data(other)
+        return clip
 
     def __radd__(self, other):
         return Clip(other) + self

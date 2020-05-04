@@ -18,10 +18,10 @@ import pywintypes
 
 
 class Format:
-    """This class represents a single instance of a clipboard format, as
+    """This class represents a single clipboard format. Reference
+    https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
     """
-    # standard format names:
-    # https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
+
     STANDARD_FORMATS = {
         2: "CF_BITMAP",
         8: "CF_DIB",
@@ -51,13 +51,18 @@ class Format:
         12: "CF_WAVE"
     }
 
+    # someday we'll use this to convert python data objects into clean Datums
     python_formats = {
         "str": 13
     }
 
     @staticmethod
     def translate_format(cb_format):
-        """Convert a format specifier number into a human-readable format name."""
+        """ Convert a format specifier number into a human-readable format name.
+
+        :param cb_format: clipboard format as integer
+        :return: clipboard format name as string
+        """
         if cb_format in Format.STANDARD_FORMATS:
             # return "standard format " + \
             #        ClipboardRenderer.STANDARD_FORMATS[CBFormat]
@@ -66,6 +71,13 @@ class Format:
 
     @staticmethod
     def from_data(data=None):
+        """ Generate a format from an arbitrary python data object.
+        TODO: support anything besides strings.
+        Probably should be merged into __init__??
+
+        :param data: abitrary data object
+        :return: generated Format
+        """
         if data is None:
             return Format()
         data_type = type(data).__name__
@@ -76,6 +88,10 @@ class Format:
         return Format(new_id)
 
     def __init__(self, format_id=None):
+        """ Initialize a new Format
+
+        :param format_id:
+        """
         if isinstance(format_id, Format):
             self.id = format_id.id
             self.name = format_id.name
@@ -146,7 +162,7 @@ class Clip:
 
     def __init__(self, data=None):
         """
-        Create a new empty clip
+        Create a new clip with data; pass none for an empty clip
         """
         if isinstance(data, Clip):
             self.seq_num = data.seq_num
@@ -157,6 +173,12 @@ class Clip:
         self.add_data(data)
 
     def add_data(self, data, list_recursion=False):
+        """ append an arbitrary data object to the end of this clip's data.
+
+        When run on a list, it appends the list as multiple objects and will
+        recurse into itself on individual items. However, it only does this;
+        [[1, 2]] will load a single datum with data [1, 2]
+        """
         overload = {
             "Datum": self._add_datum,
             "Clip": self._add_clip,
@@ -186,7 +208,8 @@ class Clip:
         return [x.format for x in self.data]
 
     def __str__(self):
-        return f"Clip {self.seq_num}"
+        return f"Clip {self.seq_num}; {len(self)} element(s), first element " \
+               f"{str(self[0])}"
 
     def __add__(self, other):
         clip = Clip(self)
@@ -202,23 +225,50 @@ class Clip:
     def __len__(self):
         return len(self.data)
 
+    def __setitem__(self, key, value):
+        if isinstance(key, slice):
+            self.data[key] = [Datum(i) for i in value]
+        else:
+            self.data[key] = Datum(value)
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __delitem__(self, key):
+        del self.data[key]
+
 
 class Handler:
+    """ 
+
+    """
+    # ref http://timgolden.me.uk/pywin32-docs/win32clipboard.html
+    # https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations
     def __init__(self):
         print("Initializing clipboard...")
+        self.seq = self
 
-    def write_clipboard(self, data):
+    def write(self, data):
         """Write a piece of data to the clipboard, overwriting the current
         contents."""
         wc.EmptyClipboard()
-        if isinstance(data, Clip):
-            pass
-        else:
-            pass
+        if not isinstance(data, Clip):
+            data = Clip(data)
+        pass
 
-    def read_clipboard(self):
+    def read(self):
         clip = Clip()
         return clip
+
+    def clear(self):
+        pass
+
+    def seq(self):
+        self.seq = wc.GetClipboardSequenceNumber()
+        return self.seq
+
+    def check_seq(self):
+        pass
 
 
 class Monitor(QtCore.QThread):

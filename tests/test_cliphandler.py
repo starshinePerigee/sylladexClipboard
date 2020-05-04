@@ -224,10 +224,14 @@ class TestClip:
     def clip_data(self, class_params):
         return find_data(class_params)
 
+    @pytest.fixture
+    def list_clip(self):
+        return ch.Clip(["item 1", "item 2", "item 3", "item 4", "item 5"])
+
     running_ids = []
 
     def test_init(self, my_clip, clip_data):
-        assert my_clip.data[0].data == clip_data
+        assert my_clip[0].data == clip_data
         assert my_clip.seq_num not in TestClip.running_ids
         TestClip.running_ids += [my_clip.seq_num]
 
@@ -247,8 +251,44 @@ class TestClip:
         assert clip.seq_num < 0
         assert "Clip" in type(clip).__name__
         with expectation as err_info:
-            print(clip.data[0].data)
+            print(clip[0].data)
         assert description in str(err_info.value)
+
+    def test_get(self, list_clip):
+        assert list_clip[0].data == "item 1"
+        assert list_clip[-1].data == "item 5"
+        assert [i.data for i in list_clip[0:3]] == ["item 1", "item 2", "item 3"]
+        assert [i.data for i in list_clip[0:5:2]] == ["item 1", "item 3", "item 5"]
+        with pytest.raises(IndexError):
+            list_clip[5] += 1
+
+    def test_set(self, list_clip):
+        assert list_clip[0].data == "item 1"
+        list_clip[0] = "item a"
+        assert list_clip[0].data == "item a"
+        assert len(list_clip) == 5
+        list_clip[-1] = "item e"
+        assert list_clip[4].data == "item e"
+        list_clip[1:4] = ["item b", "item c", "item d"]
+        assert [i.data for i in list_clip[:]] == \
+               ["item a", "item b", "item c", "item d", "item e"]
+
+    def test_del(self, list_clip):
+        assert len(list_clip) == 5
+        del list_clip[2]
+        assert len(list_clip) == 4
+        assert [i.data for i in list_clip[:]] == \
+               ["item 1", "item 2", "item 4", "item 5"]
+        del list_clip[1:3]
+        assert [i.data for i in list_clip[:]] == ["item 1", "item 5"]
+
+    def test_str(self, my_clip, clip_data):
+        if clip_data == "<b>Html Text</b>":
+            pytest.skip("Relying on HTML text detection, which is not"
+                        "currently implemented.")
+        assert str(my_clip.seq_num) in str(my_clip)
+        assert str(len(my_clip.data)) in str(my_clip)
+        assert str(ch.Datum(clip_data)) in str(my_clip)
 
     def test_formats(self, my_clip, clip_data):
         if clip_data == "<b>Html Text</b>":
@@ -258,9 +298,10 @@ class TestClip:
     def test_add(self, my_clip, clip_data, add_target, add_result):
         result_forward = my_clip + add_target
         assert "Clip" in type(result_forward).__name__
-        assert result_forward.data[0].data == clip_data
-        assert result_forward.data[1].data == add_result
+        assert result_forward[0].data == clip_data
+        assert result_forward[len(my_clip)].data == add_result
         result_reverse = add_target + my_clip
         assert "Clip" in type(result_reverse).__name__
         assert result_reverse.data[0].data == add_result
-        assert result_reverse.data[-1].data == clip_data
+        assert result_reverse.data[-len(my_clip)].data == clip_data
+

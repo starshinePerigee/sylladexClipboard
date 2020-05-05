@@ -10,6 +10,9 @@ slots caught:
 load_card_to_clipboard(Clip/Card/string)
 """
 
+import sys
+import logging
+
 from PySide2 import QtCore
 from PySide2.QtCore import Signal, Slot
 
@@ -51,56 +54,22 @@ class Format:
         12: "CF_WAVE"
     }
 
-    # someday we'll use this to convert python data objects into clean Datums
-    python_formats = {
-        "str": 13
-    }
-
-    @staticmethod
-    def translate_format(cb_format):
-        """ Convert a format specifier number into a human-readable format name.
-
-        :param cb_format: clipboard format as integer
-        :return: clipboard format name as string
-        """
-        if cb_format in Format.STANDARD_FORMATS:
-            # return "standard format " + \
-            #        ClipboardRenderer.STANDARD_FORMATS[CBFormat]
-            return Format.STANDARD_FORMATS[cb_format][3:]
-        return wc.GetClipboardFormatName(cb_format)
-
-    @staticmethod
-    def from_data(data=None):
-        """ Generate a format from an arbitrary python data object.
-        TODO: support anything besides strings.
-        Probably should be merged into __init__??
-
-        :param data: abitrary data object
-        :return: generated Format
-        """
-        if data is None:
-            return Format()
-        data_type = type(data).__name__
-        if data_type in Format.python_formats:
-            new_id = Format.python_formats[data_type]
-        else:
-            new_id = 13
-        return Format(new_id)
-
     def __init__(self, format_id=None):
-        """ Initialize a new Format
-
-        :param format_id:
-        """
+        """ Initialize a new Format."""
         if isinstance(format_id, Format):
             self.id = format_id.id
             self.name = format_id.name
         elif format_id:
-            if format_id == 3:  # CF_METAFILEPICT
-                raise ValueError("CF_METAFILEPICT format not supported "
-                                 "by win32clipboard!")
+            # if format_id == 3:  # CF_METAFILEPICT
+            #     raise ValueError("CF_METAFILEPICT format not supported "
+            #                      "by win32clipboard!")
             self.id = format_id
-            self.name = Format.translate_format(self.id)
+            if format_id in Format.STANDARD_FORMATS:
+                # return "standard format " + \
+                #        ClipboardRenderer.STANDARD_FORMATS[CBFormat]
+                self.name = Format.STANDARD_FORMATS[format_id][3:]
+            else:
+                self.name = wc.GetClipboardFormatName(format_id)
         else:
             self.id = None
             self.name = None
@@ -113,6 +82,8 @@ class Format:
 
     def __eq__(self, other):
         # return self.id == other.id and self.name == other.name
+        if isinstance(other, int):
+            return self.id == other
         return self.id == other.id
 
     def __ne__(self, other):
@@ -122,11 +93,41 @@ class Format:
 class Datum:
     """Contains a single clipboard data-format pair"""
     def __init__(self, data=None, format_=None):
-        self.data = data
-        if format_ is None:
-            self.format = Format.from_data(data)
+        self.data_types = None
+        if data is None:
+            self.data = None
+            self.format = Format(None)
+        elif isinstance(data, Datum):
+            self.data = data.data
+            self.format = data.format
         else:
-            self.format = Format(format_)
+            self.data, serial_format = self.serialize(data)
+            if format_:
+                self.format = Format(format_)
+            else:
+                self.format = Format(serial_format)
+
+    def serialize(self, data):
+        if self.data_types is None:
+            self.data_types = {
+                "QImage": self._load_qimage
+            }
+        if data is not None:
+            data_type = type(data).__name__
+            return self.data_types.get(data_type, self._load_arbitrary)(data)
+
+    @staticmethod
+    def _load_arbitrary(data):
+        return data, 13
+
+    @staticmethod
+    def _load_qimage(data):
+        # TODO: support multiple image formats
+        ba = QtCore.QByteArray()
+        buffer = QtCore.QBuffer(ba)
+        buffer.open(QtCore.QIODevice.WriteOnly)
+        data.save(buffer, "PNG")
+        return buffer.data(), 49927
 
     def string_preview(self, length=80):
         preview = str(self.data)
@@ -160,16 +161,19 @@ class Clip:
     """
     running_id = -1
 
-    def __init__(self, data=None):
+    def __init__(self, data=None, seq_num=None):
         """
         Create a new clip with data; pass none for an empty clip
         """
-        if isinstance(data, Clip):
+        if seq_num:
+            self.seq_num = seq_num
+        elif isinstance(data, Clip):
             self.seq_num = data.seq_num
         else:
             self.seq_num = Clip.running_id
             Clip.running_id -= 1
         self.data = []
+        self.data_containers = None
         self.add_data(data)
 
     def add_data(self, data, list_recursion=False):
@@ -179,17 +183,18 @@ class Clip:
         recurse into itself on individual items. However, it only does this;
         [[1, 2]] will load a single datum with data [1, 2]
         """
-        overload = {
-            "Datum": self._add_datum,
-            "Clip": self._add_clip,
-            "list": self._add_list,
-        }
+        if self.data_containers is None:
+            self.data_containers = {
+                "Datum": self._add_datum,
+                "Clip": self._add_clip,
+                "list": self._add_list,
+            }
         if data is not None:
             data_type = type(data).__name__
             if data_type == "list" and list_recursion:
                 self._add_arg(data)
             else:
-                overload.get(data_type, self._add_arg)(data)
+                self.data_containers.get(data_type, self._add_arg)(data)
 
     def _add_datum(self, data):
         self.data += [data]
@@ -206,6 +211,25 @@ class Clip:
 
     def formats(self):
         return [x.format for x in self.data]
+
+    def find(self, format_order):
+        if format_order is None:
+            return Datum()
+        if isinstance(format_order, int) or isinstance(format_order, Format):
+            format_order = [format_order]
+        clip_formats = self.formats()
+        for format_ in format_order:
+            # note that Format.__eq__ accepts ints;
+            # this means you can do "13 in <list of Format>
+            if format_ in clip_formats:
+                return self.data[clip_formats.index(format_)]
+        raise LookupError(f"No priority formats in format_order present in clip data!")
+
+    def print_all(self):
+        print(f"***Clip ID {self.seq_num} with {len(self)} elements:")
+        for i in self.data:
+            print("   " + str(i))
+
 
     def __str__(self):
         return f"Clip {self.seq_num}; {len(self)} element(s), first element " \
@@ -232,6 +256,8 @@ class Clip:
             self.data[key] = Datum(value)
 
     def __getitem__(self, key):
+        if len(self) == 0 and key == 0:
+            return Datum()
         return self.data[key]
 
     def __delitem__(self, key):
@@ -239,14 +265,18 @@ class Clip:
 
 
 class Handler:
-    """ 
+    """ Handler provides a contextmanager-type interface to win32clipboard
+    which uses cliphandler data types and has useful utility functions.
 
+    Most references to win32clipboard should be in this class to make changing
+    libraries easier (if necessary), like if we ever want cross-platform support.
     """
     # ref http://timgolden.me.uk/pywin32-docs/win32clipboard.html
     # https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations
     def __init__(self):
-        print("Initializing clipboard...")
-        self.seq = self
+        logging.info("Initializing clipboard.")
+        self.current_seq = 0
+        self.seq()
 
     def write(self, data):
         """Write a piece of data to the clipboard, overwriting the current
@@ -254,29 +284,85 @@ class Handler:
         wc.EmptyClipboard()
         if not isinstance(data, Clip):
             data = Clip(data)
-        pass
+        success = False
+        for item in data:
+            if item.data is None:
+                logging.info(f"Skipping None: {item}")
+                continue
+            try:
+                wc.SetClipboardData(item.format.id, item.data)
+                success = True
+            except pywintypes.error:
+                error = sys.exc_info()
+                if error[1].strerror == "The handle is invalid.":
+                    logging.warning(f"The handle for {item} is invalid and will be skipped.")
+        if not success:
+            logging.error(f"Could not write {data} as all data were invalid.")
+        self.seq()
 
     def read(self):
-        clip = Clip()
+        """ Read the current contents of the clipboard and return it as a Clip"""
+        clip = Clip(seq_num=self.seq())
+        for format_ in self._get_all_formats():
+            clip.add_data(self._read_single(format_))
         return clip
 
+    @staticmethod
+    def _get_all_formats():
+        """ Read all data formats currently on the clipboard.
+        Returns as a list of ints"""
+        all_formats = []
+        current_format = 0
+        while wc.EnumClipboardFormats(current_format) != 0:
+            current_format = wc.EnumClipboardFormats(current_format)
+            all_formats.append(current_format)
+        return all_formats
+
+    @staticmethod
+    def _read_single(format_):
+        if isinstance(format_, Format):
+            format_ = format_.id
+        if format_ == 3:  # CF_METAFILEPICT NOT SUPPORTED BY win32clipboard
+            logging.warning("CF_METAFILEPICT not supported by win32clipboard! Returning None")
+            return Datum()
+        try:
+            data = wc.GetClipboardData(format_)
+            return Datum(data, format_)
+        except TypeError:
+            logging.warning(f"CLIPBOARD FORMAT UNAVAILABLE: "
+                            f"{Format.translate_format(format_)}")
+            return Datum()
+
     def clear(self):
-        pass
+        wc.EmptyClipboard()
+        self.seq()
 
     def seq(self):
-        self.seq = wc.GetClipboardSequenceNumber()
-        return self.seq
+        self.current_seq = wc.GetClipboardSequenceNumber()
+        return self.current_seq
 
     def check_seq(self):
-        pass
+        """ Return True if the current clipboard contents are newer than the
+        most recent read/write"""
+        return wc.GetClipboardSequenceNumber() != self.current_seq
+
+    def __enter__(self):
+        wc.OpenClipboard()
+        return self
+
+    def __exit__(self, exception_type, exception_value, traceback):
+        # ref http://effbot.org/zone/python-with-statement.htm
+        wc.CloseClipboard()
 
 
 class Monitor(QtCore.QThread):
-    """The top level clipboard handler class. Runs as its own thread.
+    """The top level clipboard handler class. Runs as its own thread, accepts
+    events in and out to read/write/set.
+    TODO: (bind to Clip objects when they're created??)
     """
 
     def __init__(self):
-        super(Monitor, self).__init__(self)
+        super().__init__()
 
     def __del__(self):
         self.wait()

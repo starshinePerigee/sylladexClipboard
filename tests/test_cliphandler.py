@@ -1,6 +1,9 @@
 import pytest
 from contextlib import contextmanager
 
+from PySide2 import QtGui, QtCore, QtWidgets
+import pytestqt
+
 import cliphandler as ch
 import pywintypes
 
@@ -20,6 +23,12 @@ def find_data(data):
             return []
         else:
             return data[0]
+    elif isinstance(data, QtGui.QImage):
+        ba = QtCore.QByteArray()
+        buffer = QtCore.QBuffer(ba)
+        buffer.open(QtCore.QIODevice.WriteOnly)
+        data.save(buffer, "PNG")
+        return buffer.data()
     else:
         return data
 
@@ -31,6 +40,7 @@ class TestFormat:
         (2, "BITMAP"),
         (49443, "HTML Format"),
         (49435, "Shell IDList Array"),
+        (3, "METAFILEPICT"),
     ]
 
     @pytest.fixture(params=test_pairs, ids=[
@@ -38,7 +48,8 @@ class TestFormat:
         "plaintext",
         "bitmap",
         "html_text",
-        "shell_ID_list"
+        "shell_ID_list",
+        "METAFILEPICT"
     ])
     def format_pair(self, request):
         return request.param[0], request.param[1]
@@ -48,7 +59,7 @@ class TestFormat:
         return ch.Format(format_pair[0])
 
     def test_translate(self, format_pair):
-        assert ch.Format.translate_format(format_pair[0]) == format_pair[1]
+        assert ch.Format(format_pair[0]).name == format_pair[1]
 
     @pytest.mark.parametrize(
         "format_, expectation, description",
@@ -56,7 +67,7 @@ class TestFormat:
             (1, does_not_raise(), "None"),
             (-1, pytest.raises(pywintypes.error), "The handle is invalid"),
             # (None, pytest.raises(TypeError), "integer is required"),
-            (3, pytest.raises(ValueError), "CF_METAFILEPICT format not supported")
+            # (3, pytest.raises(ValueError), "CF_METAFILEPICT format not supported")
         ]
     )
     def test_translate_errors(self, format_, expectation, description):
@@ -69,24 +80,13 @@ class TestFormat:
         # assert my_format.name == format_name
         assert my_format.name == format_pair[1]
 
-    @pytest.mark.parametrize("input_data, format_id, format_name",
-                             [
-                                 ("test", 13, "UNICODETEXT"),
-                                 (None, None, None),
-                             ])
-    def test_from_data(self, input_data, format_id, format_name):
-        data_format = ch.Format.from_data(input_data)
-        assert True
-        assert data_format.id == format_id
-        assert data_format.name == format_name
-
     def test_to_str(self, format_pair, my_format):
         assert str(format_pair[0]) in str(my_format) and \
                format_pair[1] in str(my_format)
 
     def test_eq_ne(self):
         format_str_1 = ch.Format(13)
-        format_str_2 = ch.Format.from_data("text")
+        format_str_2 = ch.Format(13)
         assert format_str_1 == format_str_2
         assert format_str_2 == format_str_1
 
@@ -110,6 +110,7 @@ class TestFormat:
     (ch.Clip(["test_clip_multi", 2, None, 44])),
     ("test_string"),
     (912),
+    (ch.Datum(None, 3))
 ], ids=[
     "add_datum",
     "add_list_single",
@@ -118,6 +119,7 @@ class TestFormat:
     "add_clip_many",
     "add_string",
     "add_int",
+    "add_metafilepict_None"
 ])
 def add_target(request):
     return request.param
@@ -136,11 +138,15 @@ class TestDatum:
         {"data": "plaintext", "format_": 1},
         {"data": "text unformatted", "format_": None},
         {"data": big_text, "format_": None},
+        {"data": b"METAFILEPICT", "format_": 3},
+        {"data": QtGui.QImage("punched.png"), "format_": 49927},
     ], ids=[
         "datum_unicode_text",
         "datum_plaintext",
         "datum_unformatted_text",
-        "datum_big_text"
+        "datum_big_text",
+        "datum_metafilepict",
+        "datum_qimage"
     ])
     def class_params(self, request):
         return request.param
@@ -154,7 +160,7 @@ class TestDatum:
         if class_params["format_"]:
             return ch.Format(class_params["format_"])
         else:
-            return ch.Format.from_data(class_params["data"])
+            return ch.Datum(class_params["data"]).format
 
     # @pytest.fixture
     # def expected_execptions(self, class_params):
@@ -168,13 +174,13 @@ class TestDatum:
     #         return does_not_raise()
 
     def test_init(self, class_params, my_datum, response_format):
-        assert my_datum.data == class_params["data"]
+        assert my_datum.data == find_data(class_params["data"])
         assert my_datum.format == response_format
-        assert type(my_datum.data) == type(class_params["data"])
+        assert type(my_datum.data) == type(find_data(class_params["data"]))
 
     def test_str(self, class_params, my_datum, response_format):
-        assert class_params["data"][0:40] in str(my_datum)
-        assert str(response_format) in str(my_datum)
+        assert response_format.name in str(my_datum)
+        assert str(find_data(class_params["data"]))[0:40] in str(my_datum)
 
     def test_add(self, my_datum, add_target, add_result):
         result_forward = my_datum + add_target
@@ -205,13 +211,15 @@ class TestClip:
         ch.Clip(["string_1", "string_2"]),
         [[1, 2, 3], [4, 5], 6],
         ["test", 1, None, b"bytes"],
+        QtGui.QImage("punched.png")
     ], ids=[
         "clip_single_str",
         "clip_single_datum_html",
         "clip_list_3str",
         "clip_from_clip_2str",
         "clip_list_lists_3int",
-        "clip_list_mixd",
+        "clip_list_mixed",
+        "clip_png_qimage",
     ])
     def class_params(self, request):
         return request.param
@@ -235,24 +243,38 @@ class TestClip:
         assert my_clip.seq_num not in TestClip.running_ids
         TestClip.running_ids += [my_clip.seq_num]
 
+    # @pytest.mark.parametrize(
+    #     "data, expectation, description",
+    #     [
+    #         (None, pytest.raises(IndexError), "list index out of range"),
+    #         ([], pytest.raises(IndexError), "list index out of range")
+    #     ],
+    #     ids= [
+    #         "clip_None",
+    #         "clip_empty"
+    #     ]
+    # )
+    # def test_init_errors(self, data, expectation, description):
+    #     clip = ch.Clip(data)
+    #     assert clip.seq_num < 0
+    #     assert "Clip" in type(clip).__name__
+    #     with expectation as err_info:
+    #         print(clip[0].data)
+    #     assert description in str(err_info.value)
     @pytest.mark.parametrize(
-        "data, expectation, description",
+        "data",
         [
-            (None, pytest.raises(IndexError), "list index out of range"),
-            ([], pytest.raises(IndexError), "list index out of range")
+            None,
+            []
         ],
         ids= [
             "clip_None",
             "clip_empty"
         ]
     )
-    def test_init_errors(self, data, expectation, description):
+    def test_init_errors(self, data):
         clip = ch.Clip(data)
-        assert clip.seq_num < 0
-        assert "Clip" in type(clip).__name__
-        with expectation as err_info:
-            print(clip[0].data)
-        assert description in str(err_info.value)
+        assert clip[0].data is None
 
     def test_get(self, list_clip):
         assert list_clip[0].data == "item 1"
@@ -288,12 +310,30 @@ class TestClip:
                         "currently implemented.")
         assert str(my_clip.seq_num) in str(my_clip)
         assert str(len(my_clip.data)) in str(my_clip)
-        assert str(ch.Datum(clip_data)) in str(my_clip)
+        assert str(clip_data)[:40] in str(my_clip)
 
-    def test_formats(self, my_clip, clip_data):
+    def test_formats(self, my_clip, clip_data, class_params):
         if clip_data == "<b>Html Text</b>":
             pytest.xfail("HTML string detection not currently implemented.")
-        assert ch.Format.from_data(clip_data).name == my_clip.formats()[0].name
+        assert ch.Datum(class_params).format.name == my_clip.formats()[0].name
+
+    @pytest.fixture
+    def multiple_format_clip(self):
+        many_formats = [1, 2, 4, 6, 13]
+        datums = [ch.Datum(f"datum {x}") for x in range(0, len(many_formats))]
+        for idx, format_ in enumerate(many_formats):
+            datums[idx].format = ch.Format(format_)
+        return ch.Clip(datums)
+
+    @pytest.mark.parametrize("input, expected", [
+        (1, 1),
+        ([1, 2], 1),
+        ([2, 1], 2),
+        ([3, 1, 2], 1),
+        ([14, 19, 13, 1], 13),
+    ])
+    def test_priority_order(self, multiple_format_clip, input, expected):
+        assert multiple_format_clip.find(input).format.id == expected
 
     def test_add(self, my_clip, clip_data, add_target, add_result):
         result_forward = my_clip + add_target
@@ -305,3 +345,57 @@ class TestClip:
         assert result_reverse.data[0].data == add_result
         assert result_reverse.data[-len(my_clip)].data == clip_data
 
+    def test_for(self):
+        array = [1, 2, 3, 4]
+        array_clip = ch.Clip(array)
+        for a, b in zip(array_clip, array):
+            assert a.data == b
+
+
+# def qimage_from_clip_bitmap(clip):
+#     bitmap = None
+#     for i in clip:
+#         if
+#     if bitmap:
+#         byte_array = QtCore.QByteArray(byte_str)
+#         q_image = QImage.fromData(byte_array)
+#         return q_image
+#     else:
+#         raise ValueError(f"No bitmap data in clip!\r\n{clip.print_all()}")
+
+class TestHandler:
+    @pytest.fixture(params=[
+        None,
+        "test string a",
+        QtGui.QImage("punched.png"),
+    ], ids=[
+        "cb_empty",
+        "cb_string",
+        "cb_image",
+        # "cb_self_html_text",
+        #TODO: "cb_self_image"
+    ])
+    def class_params(self, request):
+        return request.param
+
+    @pytest.fixture(autouse=True)
+    def load_clipboard(self, class_params, qapp):
+        q_clipboard = qapp.clipboard()
+        if class_params is None:
+            q_clipboard.clear()
+        elif isinstance(class_params, QtGui.QImage):
+            q_clipboard.setImage(class_params)
+        elif isinstance(class_params, str):
+            q_clipboard.setText(class_params)
+        else:
+            raise ValueError("Don't know how to load that datatype into the clipboard!")
+
+    @pytest.fixture
+    def my_handler(self):
+        handler = ch.Handler()
+        with handler:
+            yield handler
+
+    def test_test(self, my_handler, load_clipboard, class_params):
+        clip = my_handler.read()
+        assert find_data(class_params) == clip.find(ch.Datum(class_params).format.id).data

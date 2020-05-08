@@ -275,8 +275,10 @@ class Handler:
     """
     # ref http://timgolden.me.uk/pywin32-docs/win32clipboard.html
     # https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations
-    def __init__(self):
+    def __init__(self, cb_mutex):
         logging.info("Initializing clipboard.")
+        self.cb_mutex = cb_mutex
+        self.locker = None
         self.current_seq = 0
         self.seq()
 
@@ -349,12 +351,27 @@ class Handler:
         return wc.GetClipboardSequenceNumber() != self.current_seq
 
     def __enter__(self):
+        if self.locker is None:
+            self.locker = QtCore.QMutexLocker(self.cb_mutex)
+        else:
+            self.locker.relock()
         wc.OpenClipboard()
         return self
 
-    def __exit__(self, exception_type, exception_value, traceback):
+    def __exit__(self, exception_type=None, exception_value=None, traceback=None):
         # ref http://effbot.org/zone/python-with-statement.htm
-        wc.CloseClipboard()
+        if exception_type:
+            print(f"Exception found! {exception_type} {exception_value} {traceback}")
+
+        try:
+            self.locker.unlock()
+            wc.CloseClipboard()
+        except pywintypes.error as e:
+            if e.strerror == "Thread does not have a clipboard open.":
+                logging.warning("Could not close clipboard, "
+                                "thread does not have a clipboard open.")
+            else:
+                raise e
 
 
 class Monitor(QtCore.QThread):
@@ -364,20 +381,23 @@ class Monitor(QtCore.QThread):
     """
     clipboard_updated = Signal()
     new_card_from_clipboard = Signal(Clip)
+    cb_mutex = QtCore.QMutex()
 
     def __init__(self):
         super().__init__()
-        self.handler = Handler()
+        self.cb_mutex = Monitor.cb_mutex
+        self.handler = Handler(self.cb_mutex)
         self.halt = False
 
     def __del__(self):
         self.wait()
 
     def run(self):
-        while not halt:
+        while not self.halt:
             if self.handler.check_seq():
                 self.clipboard_updated.emit()
-                new_clip = self.handler.read()
+                with self.handler:
+                    new_clip = self.handler.read()
                 self.new_card_from_clipboard.emit(new_clip)
 
     @Slot()

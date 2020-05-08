@@ -266,10 +266,6 @@ class Clip:
         del self.data[key]
 
 
-# module global for a global resource
-cb_mutex = QtCore.QMutex()
-
-
 class Handler:
     """ Handler provides a contextmanager-type interface to win32clipboard
     which uses cliphandler data types and has useful utility functions.
@@ -279,8 +275,9 @@ class Handler:
     """
     # ref http://timgolden.me.uk/pywin32-docs/win32clipboard.html
     # https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations
-    def __init__(self):
+    def __init__(self, cb_mutex):
         logging.info("Initializing clipboard.")
+        self.cb_mutex = cb_mutex
         self.locker = None
         self.current_seq = 0
         self.seq()
@@ -354,10 +351,11 @@ class Handler:
         return wc.GetClipboardSequenceNumber() != self.current_seq
 
     def __enter__(self):
-        if cb_mutex.tryLock(5000):
-            wc.OpenClipboard()
+        if self.locker is None:
+            self.locker = QtCore.QMutexLocker(self.cb_mutex)
         else:
-            raise RuntimeError("Cannot get clipboard mutex lock!")
+            self.locker.relock()
+        wc.OpenClipboard()
         return self
 
     def __exit__(self, exception_type=None, exception_value=None, traceback=None):
@@ -366,8 +364,8 @@ class Handler:
             print(f"Exception found! {exception_type} {exception_value} {traceback}")
 
         try:
+            self.locker.unlock()
             wc.CloseClipboard()
-            cb_mutex.unlock()
         except pywintypes.error as e:
             if e.strerror == "Thread does not have a clipboard open.":
                 logging.warning("Could not close clipboard, "
@@ -383,10 +381,12 @@ class Monitor(QtCore.QThread):
     """
     clipboard_updated = Signal()
     new_card_from_clipboard = Signal(Clip)
+    cb_mutex = QtCore.QMutex()
 
     def __init__(self):
         super().__init__()
-        self.handler = Handler()
+        self.cb_mutex = Monitor.cb_mutex
+        self.handler = Handler(self.cb_mutex)
         self.halt = False
 
     def __del__(self):
@@ -396,17 +396,9 @@ class Monitor(QtCore.QThread):
         while not self.halt:
             if self.handler.check_seq():
                 self.clipboard_updated.emit()
-                try:
-                    with self.handler:
-                        new_clip = self.handler.read()
-                    self.new_card_from_clipboard.emit(new_clip)
-                except RuntimeError as e:
-                    if str(e) == "Cannot get clipboard mutex lock!":
-                        # DANGEROUS MAYBE
-                        wc.CloseClipboard()
-                        cb_mutex.unlock()
-                        # should attempt again because handler.seq hasn't been
-                        # updated since read would have failed.
+                with self.handler:
+                    new_clip = self.handler.read()
+                self.new_card_from_clipboard.emit(new_clip)
 
     @Slot()
     def load(self, clip):

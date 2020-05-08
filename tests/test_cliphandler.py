@@ -410,9 +410,15 @@ def clear_qclipboard(qapp):
 
 
 class TestHandler:
+    @pytest.fixture(scope="module", autouse=True)
+    def cb_mutex(self):
+        self.my_mutex = QtCore.QMutex()
+        return self.my_mutex
+
     @pytest.fixture
-    def my_handler(self):
-        with ch.Handler() as handler:
+    def my_handler(self, cb_mutex):
+        handler = ch.Handler(cb_mutex)
+        with handler:
             yield handler
 
     @pytest.mark.usefixtures("load_qclipboard")
@@ -421,16 +427,16 @@ class TestHandler:
         assert find_data(load_params) == clip.find(ch.Datum(load_params).format.id).data
 
     @pytest.mark.usefixtures("clear_qclipboard")
-    def test_write(self, read_qclipboard, load_params):
+    def test_write(self, cb_mutex, read_qclipboard, load_params):
         clip = ch.Clip(load_params)
-        with ch.Handler() as my_handler:
+        with ch.Handler(cb_mutex) as my_handler:
             my_handler.write(clip)
         assert read_qclipboard() == load_params
 
     @pytest.mark.usefixtures("load_qclipboard")
-    def test_clear(self, read_qclipboard, load_params, qapp):
+    def test_clear(self, cb_mutex, read_qclipboard, load_params, qapp):
         assert read_qclipboard() == load_params
-        with ch.Handler() as my_handler:
+        with ch.Handler(cb_mutex) as my_handler:
             my_handler.clear()
         assert qapp.clipboard().text() is ""
 
@@ -448,16 +454,16 @@ class TestHandler:
         my_handler.write(ch.Clip("test"))
         assert my_handler.current_seq == current_seq + 3
 
-    def test_mutexes(self):
-        handler_1 = ch.Handler()
-        assert ch.cb_mutex.try_lock() is True
-        ch.cb_mutex.unlock()
+    def test_mutexes(self, cb_mutex):
+        handler_1 = ch.Handler(cb_mutex)
+        assert cb_mutex.try_lock() is True
+        cb_mutex.unlock()
         handler_1.__enter__()
-        assert ch.cb_mutex.try_lock() is False
+        assert cb_mutex.try_lock() is False
         handler_1.write("test mutex")
         handler_1.__exit__()
-        assert ch.cb_mutex.try_lock() is True
-        ch.cb_mutex.unlock()
+        assert cb_mutex.try_lock() is True
+        cb_mutex.unlock()
         with handler_1:
             new_clip = handler_1.read()
         assert new_clip[0].data == "test mutex"
@@ -471,8 +477,10 @@ class TestMonitor:
 
     @pytest.fixture
     def handler_write(self, load_params, my_monitor):
+        my_handler = ch.Handler(my_monitor.cb_mutex)
+
         def _handler_write():
-            with ch.Handler() as my_handler:
+            with my_handler:
                 my_handler.write(load_params)
 
         return _handler_write

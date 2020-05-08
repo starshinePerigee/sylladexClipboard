@@ -104,8 +104,10 @@ class ClipboardRenderer:
         disambiguate = {
             1: self.render_text,
             2: self.render_bitmap,
+            49928: self.render_bitmap,
             49401: self.render_html_text,
             49446: self.render_html_text,  # HTML Text
+            49443: self.render_html_text,
             49158: self.render_text  # FileName
         }
 

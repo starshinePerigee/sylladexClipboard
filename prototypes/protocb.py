@@ -61,7 +61,7 @@ def types_to_str(target):
         return str(type(target))
 
 
-def print_subset(item, length=80):
+def print_subset(item, length=8000):
     cstring = str(item)
     if len(cstring) > length:
         cstring = cstring[:length]

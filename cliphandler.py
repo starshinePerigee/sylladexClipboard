@@ -54,6 +54,14 @@ class Format:
         12: "CF_WAVE"
     }
 
+    @staticmethod
+    def translate_format(format_id):
+        if format_id in Format.STANDARD_FORMATS:
+            # return "standard format " + \
+            #        ClipboardRenderer.STANDARD_FORMATS[CBFormat]
+            return Format.STANDARD_FORMATS[format_id][3:]
+        return wc.GetClipboardFormatName(format_id)
+
     def __init__(self, format_id=None):
         """ Initialize a new Format."""
         if isinstance(format_id, Format):
@@ -64,12 +72,7 @@ class Format:
             #     raise ValueError("CF_METAFILEPICT format not supported "
             #                      "by win32clipboard!")
             self.id = format_id
-            if format_id in Format.STANDARD_FORMATS:
-                # return "standard format " + \
-                #        ClipboardRenderer.STANDARD_FORMATS[CBFormat]
-                self.name = Format.STANDARD_FORMATS[format_id][3:]
-            else:
-                self.name = wc.GetClipboardFormatName(format_id)
+            self.name = self.translate_format(format_id)
         else:
             self.id = None
             self.name = None
@@ -230,7 +233,6 @@ class Clip:
         for i in self.data:
             print("   " + str(i))
 
-
     def __str__(self):
         return f"Clip {self.seq_num}; {len(self)} element(s), first element " \
                f"{str(self[0])}"
@@ -360,20 +362,32 @@ class Monitor(QtCore.QThread):
     events in and out to read/write/set.
     TODO: (bind to Clip objects when they're created??)
     """
+    clipboard_updated = Signal()
+    new_card_from_clipboard = Signal(Clip)
 
     def __init__(self):
         super().__init__()
+        self.handler = Handler()
+        self.halt = False
 
     def __del__(self):
         self.wait()
 
     def run(self):
-        halt = False
-        seq_num = None
         while not halt:
-            if wc.GetClipboardSequenceNumber() != seq_num:
-                pass
+            if self.handler.check_seq():
+                self.clipboard_updated.emit()
+                new_clip = self.handler.read()
+                self.new_card_from_clipboard.emit(new_clip)
 
+    @Slot()
+    def load(self, clip):
+        with self.handler:
+            self.handler.write(clip)
+
+    @Slot()
+    def exit(self):
+        self.halt = True
 
 if __name__ == '__main__':
     clipboard_thread = Monitor()

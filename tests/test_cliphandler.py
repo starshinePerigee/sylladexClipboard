@@ -102,7 +102,7 @@ class TestFormat:
         assert format_str_1 != format_delta
 
 
-@pytest.fixture(params=[
+add_params = [
     (ch.Datum("test_datum")),
     (["test_list"]),
     (["test_multi", "item 2", 44]),
@@ -111,7 +111,9 @@ class TestFormat:
     ("test_string"),
     (912),
     (ch.Datum(None, 3))
-], ids=[
+]
+
+add_ids=[
     "add_datum",
     "add_list_single",
     "add_list_many",
@@ -120,14 +122,7 @@ class TestFormat:
     "add_string",
     "add_int",
     "add_metafilepict_None"
-])
-def add_target(request):
-    return request.param
-
-
-@pytest.fixture
-def add_result(add_target):
-    return find_data(add_target)
+]
 
 
 class TestDatum:
@@ -182,14 +177,15 @@ class TestDatum:
         assert response_format.name in str(my_datum)
         assert str(find_data(class_params["data"]))[0:40] in str(my_datum)
 
-    def test_add(self, my_datum, add_target, add_result):
-        result_forward = my_datum + add_target
+    @pytest.mark.parametrize("addend", add_params, ids=add_ids)
+    def test_add(self, my_datum, addend):
+        result_forward = my_datum + addend
         assert "Clip" in type(result_forward).__name__
         assert result_forward.data[0].data == my_datum.data
-        assert result_forward.data[1].data == add_result
-        result_reverse = add_target + my_datum
+        assert result_forward.data[1].data == find_data(addend)
+        result_reverse = addend + my_datum
         assert "Clip" in type(result_reverse).__name__
-        assert result_reverse.data[0].data == add_result
+        assert result_reverse.data[0].data == find_data(addend)
         assert result_reverse.data[-1].data == my_datum.data
 
     def test_add_none(self, my_datum):
@@ -203,34 +199,36 @@ class TestDatum:
         assert len(result_forward.data) == 1
 
 
+@pytest.fixture(params=[
+    "test_single_str",
+    ch.Datum("<b>Html Text</b>", 49443),
+    ["str a", "str b", "str c"],
+    ch.Clip(["string_1", "string_2"]),
+    [[1, 2, 3], [4, 5], 6],
+    ["test", 1, None, b"bytes"],
+    QtGui.QImage("punched.png")
+], ids=[
+    "clip_single_str",
+    "clip_single_datum_html",
+    "clip_list_3str",
+    "clip_from_clip_2str",
+    "clip_list_lists_3int",
+    "clip_list_mixed",
+    "clip_png_qimage",
+])
+def clip_params(request):
+    return request.param
+
+
+@pytest.fixture
+def clip_data(clip_params):
+    return find_data(clip_params)
+
+
 class TestClip:
-    @pytest.fixture(params=[
-        "test_single_str",
-        ch.Datum("<b>Html Text</b>", 49443),
-        ["str a", "str b", "str c"],
-        ch.Clip(["string_1", "string_2"]),
-        [[1, 2, 3], [4, 5], 6],
-        ["test", 1, None, b"bytes"],
-        QtGui.QImage("punched.png")
-    ], ids=[
-        "clip_single_str",
-        "clip_single_datum_html",
-        "clip_list_3str",
-        "clip_from_clip_2str",
-        "clip_list_lists_3int",
-        "clip_list_mixed",
-        "clip_png_qimage",
-    ])
-    def class_params(self, request):
-        return request.param
-
     @pytest.fixture
-    def my_clip(self, class_params):
-        return ch.Clip(class_params)
-
-    @pytest.fixture
-    def clip_data(self, class_params):
-        return find_data(class_params)
+    def my_clip(self, clip_params):
+        return ch.Clip(clip_params)
 
     @pytest.fixture
     def list_clip(self):
@@ -312,10 +310,10 @@ class TestClip:
         assert str(len(my_clip.data)) in str(my_clip)
         assert str(clip_data)[:40] in str(my_clip)
 
-    def test_formats(self, my_clip, clip_data, class_params):
+    def test_formats(self, my_clip, clip_data, clip_params):
         if clip_data == "<b>Html Text</b>":
             pytest.xfail("HTML string detection not currently implemented.")
-        assert ch.Datum(class_params).format.name == my_clip.formats()[0].name
+        assert ch.Datum(clip_params).format.name == my_clip.formats()[0].name
 
     @pytest.fixture
     def multiple_format_clip(self):
@@ -325,24 +323,25 @@ class TestClip:
             datums[idx].format = ch.Format(format_)
         return ch.Clip(datums)
 
-    @pytest.mark.parametrize("input, expected", [
+    @pytest.mark.parametrize("formats, expected", [
         (1, 1),
         ([1, 2], 1),
         ([2, 1], 2),
         ([3, 1, 2], 1),
         ([14, 19, 13, 1], 13),
     ])
-    def test_priority_order(self, multiple_format_clip, input, expected):
-        assert multiple_format_clip.find(input).format.id == expected
+    def test_priority_order(self, multiple_format_clip, formats, expected):
+        assert multiple_format_clip.find(formats).format.id == expected
 
-    def test_add(self, my_clip, clip_data, add_target, add_result):
-        result_forward = my_clip + add_target
+    @pytest.mark.parametrize("addend", add_params, ids=add_ids)
+    def test_add(self, my_clip, clip_data, addend):
+        result_forward = my_clip + addend
         assert "Clip" in type(result_forward).__name__
         assert result_forward[0].data == clip_data
-        assert result_forward[len(my_clip)].data == add_result
-        result_reverse = add_target + my_clip
+        assert result_forward[len(my_clip)].data == find_data(addend)
+        result_reverse = addend + my_clip
         assert "Clip" in type(result_reverse).__name__
-        assert result_reverse.data[0].data == add_result
+        assert result_reverse.data[0].data == find_data(addend)
         assert result_reverse.data[-len(my_clip)].data == clip_data
 
     def test_for(self):
@@ -353,49 +352,108 @@ class TestClip:
 
 
 # def qimage_from_clip_bitmap(clip):
-#     bitmap = None
-#     for i in clip:
-#         if
-#     if bitmap:
-#         byte_array = QtCore.QByteArray(byte_str)
-#         q_image = QImage.fromData(byte_array)
-#         return q_image
-#     else:
-#         raise ValueError(f"No bitmap data in clip!\r\n{clip.print_all()}")
+#     byte_str = clip.find(XYZZY):
+#     byte_array = QtCore.QByteArray(clip.find(XYZZY))
+#     q_image = QImage.fromData(byte_array)
+#     return q_image
+
+@pytest.fixture(params=[
+    None,
+    "test string a",
+    QtGui.QImage("punched.png"),
+], ids=[
+    "cb_empty",
+    "cb_string",
+    "cb_image",
+    # "cb_self_html_text",
+    # TODO: "cb_self_image"
+])
+def load_params(request):
+    return request.param
+
+
+@pytest.fixture
+def load_qclipboard(load_params, qapp):
+    q_clipboard = qapp.clipboard()
+    if load_params is None:
+        q_clipboard.clear()
+    elif isinstance(load_params, QtGui.QImage):
+        q_clipboard.setImage(load_params)
+    elif isinstance(load_params, str):
+        q_clipboard.setText(load_params)
+    else:
+        raise ValueError("Don't know how to load that datatype into the clipboard!")
+
+
+@pytest.fixture
+def read_qclipboard(load_params, qapp):
+    q_clipboard = qapp.clipboard()
+
+    def _read_qclipboard():
+        if isinstance(load_params, QtGui.QImage):
+            return q_clipboard.image()
+        else:
+            if q_clipboard.text() is "":
+                return None
+            return q_clipboard.text()
+
+    return _read_qclipboard
+
+
+@pytest.fixture
+def clear_qclipboard(qapp):
+    q_clipboard = qapp.clipboard()
+    q_clipboard.clear()
+
 
 class TestHandler:
-    @pytest.fixture(params=[
-        None,
-        "test string a",
-        QtGui.QImage("punched.png"),
-    ], ids=[
-        "cb_empty",
-        "cb_string",
-        "cb_image",
-        # "cb_self_html_text",
-        #TODO: "cb_self_image"
-    ])
-    def class_params(self, request):
-        return request.param
-
-    @pytest.fixture(autouse=True)
-    def load_clipboard(self, class_params, qapp):
-        q_clipboard = qapp.clipboard()
-        if class_params is None:
-            q_clipboard.clear()
-        elif isinstance(class_params, QtGui.QImage):
-            q_clipboard.setImage(class_params)
-        elif isinstance(class_params, str):
-            q_clipboard.setText(class_params)
-        else:
-            raise ValueError("Don't know how to load that datatype into the clipboard!")
-
     @pytest.fixture
     def my_handler(self):
         handler = ch.Handler()
         with handler:
             yield handler
 
-    def test_test(self, my_handler, load_clipboard, class_params):
+    @pytest.mark.usefixtures("load_qclipboard")
+    def test_read(self, my_handler, load_params):
         clip = my_handler.read()
-        assert find_data(class_params) == clip.find(ch.Datum(class_params).format.id).data
+        assert find_data(load_params) == clip.find(ch.Datum(load_params).format.id).data
+
+    @pytest.mark.usefixtures("clear_qclipboard")
+    def test_write(self, read_qclipboard, load_params):
+        clip = ch.Clip(load_params)
+        with ch.Handler() as my_handler:
+            my_handler.write(clip)
+        assert read_qclipboard() == load_params
+
+    @pytest.mark.usefixtures("load_qclipboard")
+    def test_clear(self, read_qclipboard, load_params, qapp):
+        assert read_qclipboard() == load_params
+        with ch.Handler() as my_handler:
+            my_handler.clear()
+        assert qapp.clipboard().text() is ""
+
+    @pytest.mark.usefixtures("load_qclipboard")
+    def test_seq(self, my_handler, load_params):
+        current_seq = my_handler.seq()
+        assert current_seq > 0
+        my_handler.write(ch.Clip(load_params))
+        assert my_handler.current_seq > current_seq
+
+    def test_seq_2(self, my_handler):
+        current_seq = my_handler.seq()
+        my_handler.clear()
+        assert my_handler.current_seq == current_seq + 1
+        my_handler.write(ch.Clip("test"))
+        assert my_handler.current_seq == current_seq + 3
+
+
+# class TestMonitor:
+#     @pytest.fixture(scope="module")
+#     def my_monitor(self):
+#         pass
+#
+#     @pytest.fixture
+#     def my_handler(self):
+#         handler = ch.Handler()
+#         with handler:
+#             yield handler

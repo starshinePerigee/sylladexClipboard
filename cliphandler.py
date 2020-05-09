@@ -362,12 +362,12 @@ class Handler:
                     # do some wrangling to try to get the clipboard open
                     if e.strerror == "Access is denied.":
                         logging.warn(f"Clipboard access is denied.")
-                        try:
-                            wc.CloseClipboard()
-                            sleep(0.005)
-                        except pywintypes.error as e2:
-                            if e2.strerror != "Thread does not have a clipboard open":
-                                raise e2
+                        # try:
+                        #     wc.CloseClipboard()
+                        #     sleep(0.005)
+                        # except pywintypes.error as e2:
+                        #     if e2.strerror != "Thread does not have a clipboard open":
+                        #         raise e2
                         cb_mutex.unlock()
                     else:
                         raise e
@@ -400,11 +400,11 @@ class Monitor(QtCore.QObject):
     clipboard_updated = Signal()
     new_card_from_clipboard = Signal(Clip)
 
-    def __init__(self, thread=None):
+    def __init__(self):
         super().__init__()
         # if thread is None:
         #     thread = QtCore.QThread()
-        self.thread = thread
+        # self.thread = thread
         self.handler = Handler()
         self.timer = None
         self.try_count = 0
@@ -432,7 +432,7 @@ class Monitor(QtCore.QObject):
             return new_seq != self.handler.current_seq
         if self.try_count < 500:
             self.try_count += 1
-            self.thread.yieldCurrentThread()
+            # self.thread.yieldCurrentThread()
         else:
             self._reset_clipboard_lock()
             self.try_count = 0
@@ -463,8 +463,9 @@ class Monitor(QtCore.QObject):
 
     @Slot()
     def end(self):
-        # self.timer.stop()
-        self.thread.quit()
+        self.timer.stop()
+        # self.thread.quit()
+        # self.thread.wait()
 
 
 if __name__ == '__main__':

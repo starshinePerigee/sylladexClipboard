@@ -473,20 +473,25 @@ class SampleSignals(QtCore.QObject):
 
 
 class TestMonitor:
-    @pytest.fixture(scope="class")
+    @pytest.fixture(scope="class", autouse=True)
     def temp_signals(self, qapp):
         return SampleSignals(qapp)
 
     @pytest.fixture(scope="class", autouse=True)
-    def my_monitor(self, temp_signals, qapp):
-        monitor_thread = QtCore.QThread()
-        monitor_thread.start()
-        monitor = ch.Monitor(monitor_thread)
+    def monitor_thread(self, qapp):
+        new_thread = QtCore.QThread()
+        return new_thread
+
+    @pytest.fixture(scope="class", autouse=True)
+    def my_monitor(self, temp_signals, monitor_thread, qapp):
+        monitor = ch.Monitor()
         monitor.moveToThread(monitor_thread)
         temp_signals.start_monitor.connect(monitor.begin)
         temp_signals.load_data.connect(monitor.load)
         temp_signals.send_exit.connect(monitor.end)
+        monitor_thread.start()
         temp_signals.start_monitor.emit()
+        sleep(0.01)
         return monitor
 
     @staticmethod
@@ -498,8 +503,9 @@ class TestMonitor:
             try_count += 1
         return False
 
-    def test_thread_init(self, my_monitor):
-        assert my_monitor.thread.isRunning()
+    def test_thread_init(self, my_monitor, monitor_thread):
+        assert monitor_thread.isRunning()
+        assert my_monitor.timer.isActive()
 
     def test_mutex(self, my_monitor):
         assert self.mutex_please()
@@ -540,8 +546,12 @@ class TestMonitor:
                 assert data_a == data_b
                 # assert temp_handler.read()[0].data == find_data(load_params)
 
-    def test_exit(self, my_monitor, temp_signals):
-        assert not my_monitor.thread.isFinished()
+    def test_exit(self, my_monitor, monitor_thread, temp_signals):
+        assert not monitor_thread.isFinished()
         temp_signals.send_exit.emit()
         sleep(0.5)
-        assert my_monitor.thread.isFinished()
+        assert my_monitor.timer.isActive() is False
+        monitor_thread.quit()
+        monitor_thread.wait()
+        sleep(0.5)
+        assert monitor_thread.isFinished()

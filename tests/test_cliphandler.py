@@ -396,7 +396,7 @@ def read_qclipboard(load_params, qapp):
         if isinstance(load_params, QtGui.QImage):
             return q_clipboard.image()
         else:
-            if q_clipboard.text() is "":
+            if q_clipboard.text() == "":
                 return None
             return q_clipboard.text()
 
@@ -448,7 +448,7 @@ class TestHandler:
         my_handler.write(ch.Clip("test"))
         assert my_handler.current_seq == current_seq + 3
 
-    def test_mutexes(self):
+    def test_mutexes(self, qapp):
         handler_1 = ch.Handler()
         assert ch.cb_mutex.try_lock() is True
         ch.cb_mutex.unlock()
@@ -462,38 +462,86 @@ class TestHandler:
             new_clip = handler_1.read()
         assert new_clip[0].data == "test mutex"
 
-class TestMonitor:
-    @pytest.fixture(scope="module")
-    def my_monitor(self):
-        monitor = ch.Monitor()
-        monitor.start()
-        yield monitor
 
-    @pytest.fixture
-    def handler_write(self, load_params, my_monitor):
-        def _handler_write():
+class SampleSignals(QtCore.QObject):
+    start_monitor = Signal()
+    load_data = Signal(ch.Clip)
+    send_exit = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+
+class TestMonitor:
+    @pytest.fixture(scope="class")
+    def temp_signals(self, qapp):
+        return SampleSignals(qapp)
+
+    @pytest.fixture(scope="class", autouse=True)
+    def my_monitor(self, temp_signals, qapp):
+        monitor_thread = QtCore.QThread()
+        monitor_thread.start()
+        monitor = ch.Monitor(monitor_thread)
+        monitor.moveToThread(monitor_thread)
+        temp_signals.start_monitor.connect(monitor.begin)
+        temp_signals.load_data.connect(monitor.load)
+        temp_signals.send_exit.connect(monitor.end)
+        temp_signals.start_monitor.emit()
+        return monitor
+
+    @staticmethod
+    def mutex_please():
+        try_count = 0
+        while try_count < 50:
+            if ch.cb_mutex.tryLock(10):
+                return True
+            try_count += 1
+        return False
+
+    def test_thread_init(self, my_monitor):
+        assert my_monitor.thread.isRunning()
+
+    def test_mutex(self, my_monitor):
+        assert self.mutex_please()
+        ch.cb_mutex.unlock()
+        sleep(0.2)
+        assert my_monitor.try_count < 1
+        assert self.mutex_please()
+        sleep(0.5)
+        assert my_monitor.try_count >= 40
+        ch.cb_mutex.unlock()
+        sleep(0.2)
+        assert my_monitor.try_count < 1
+
+    def test_signals(self, my_monitor, load_params, qtbot):
+        with qtbot.waitSignals([(my_monitor.clipboard_updated, "clipboard updated"),
+                                (my_monitor.new_card_from_clipboard, "new card recieved")],
+                               timeout=2000, order="strict"):
             with ch.Handler() as my_handler:
                 my_handler.write(load_params)
 
-        return _handler_write
-
-    def test_signals(self, my_monitor, handler_write, load_params, qtbot):
-        with qtbot.waitSignals([my_monitor.clipboard_updated,
-                                my_monitor.new_card_from_clipboard],
-                               timeout=2000, order="strict"):
-            # with my_handler:
-            #     wc.OpenClipboard()
-            #     my_handler.write(load_params)
-            handler_write()
-
-    def test_catch_clip(self, my_monitor, handler_write, load_params, qtbot):
+    def test_catch_clip(self, my_monitor, load_params, qtbot):
         with qtbot.waitSignal(my_monitor.new_card_from_clipboard,
                               timeout=2000) as new_signal:
-            handler_write()
+            with ch.Handler() as my_handler:
+                my_handler.write(load_params)
         assert new_signal.args[0][0].data == find_data(load_params)
 
-    def test_exit(self, my_monitor):
-        assert not my_monitor.isFinished()
-        my_monitor.halt = True
-        sleep(0.01)
-        assert my_monitor.isFinished()
+    def test_load(self, my_monitor, load_params, temp_signals, qtbot):
+        with qtbot.assertNotEmitted(my_monitor.new_card_from_clipboard):
+            temp_handler = ch.Handler()
+            with temp_handler:
+                temp_handler.clear()
+            temp_signals.load_data.emit(ch.Clip(load_params))
+            sleep(0.1)
+            with temp_handler:
+                data_a = temp_handler.read()[0].data
+                data_b = find_data(load_params)
+                assert data_a == data_b
+                # assert temp_handler.read()[0].data == find_data(load_params)
+
+    def test_exit(self, my_monitor, temp_signals):
+        assert not my_monitor.thread.isFinished()
+        temp_signals.send_exit.emit()
+        sleep(0.5)
+        assert my_monitor.thread.isFinished()

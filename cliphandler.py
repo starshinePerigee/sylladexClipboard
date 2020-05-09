@@ -12,6 +12,7 @@ load_card_to_clipboard(Clip/Card/string)
 
 import sys
 import logging
+from time import sleep
 
 from PySide2 import QtCore
 from PySide2.QtCore import Signal, Slot
@@ -281,7 +282,6 @@ class Handler:
     # https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations
     def __init__(self):
         logging.info("Initializing clipboard.")
-        self.locker = None
         self.current_seq = 0
         self.seq()
 
@@ -341,24 +341,39 @@ class Handler:
             return Datum()
 
     def clear(self):
+        """Empties the contents of the current clipboard."""
         wc.EmptyClipboard()
         self.seq()
 
     def seq(self):
+        """Reads the current clipboard sequence number and updates the internal
+        seq variable."""
         self.current_seq = wc.GetClipboardSequenceNumber()
         return self.current_seq
 
-    def check_seq(self):
-        """ Return True if the current clipboard contents are newer than the
-        most recent read/write"""
-        return wc.GetClipboardSequenceNumber() != self.current_seq
-
     def __enter__(self):
-        if cb_mutex.tryLock(5000):
-            wc.OpenClipboard()
-        else:
-            raise RuntimeError("Cannot get clipboard mutex lock!")
-        return self
+        try_count = 0
+        while try_count < 100:
+            if cb_mutex.tryLock(10):
+                try:
+                    wc.OpenClipboard()
+                    return self
+                except pywintypes.error as e:
+                    # do some wrangling to try to get the clipboard open
+                    if e.strerror == "Access is denied.":
+                        logging.warn(f"Clipboard access is denied.")
+                        try:
+                            wc.CloseClipboard()
+                            sleep(0.005)
+                        except pywintypes.error as e2:
+                            if e2.strerror != "Thread does not have a clipboard open":
+                                raise e2
+                        cb_mutex.unlock()
+                    else:
+                        raise e
+            else:
+                try_count += 1
+        raise RuntimeError("Cannot get clipboard mutex lock!")
 
     def __exit__(self, exception_type=None, exception_value=None, traceback=None):
         # ref http://effbot.org/zone/python-with-statement.htm
@@ -367,6 +382,7 @@ class Handler:
 
         try:
             wc.CloseClipboard()
+            sleep(0.005)
             cb_mutex.unlock()
         except pywintypes.error as e:
             if e.strerror == "Thread does not have a clipboard open.":
@@ -376,7 +392,7 @@ class Handler:
                 raise e
 
 
-class Monitor(QtCore.QThread):
+class Monitor(QtCore.QObject):
     """The top level clipboard handler class. Runs as its own thread, accepts
     events in and out to read/write/set.
     TODO: (bind to Clip objects when they're created??)
@@ -384,29 +400,52 @@ class Monitor(QtCore.QThread):
     clipboard_updated = Signal()
     new_card_from_clipboard = Signal(Clip)
 
-    def __init__(self):
+    def __init__(self, thread=None):
         super().__init__()
+        # if thread is None:
+        #     thread = QtCore.QThread()
+        self.thread = thread
         self.handler = Handler()
-        self.halt = False
+        self.timer = None
+        self.try_count = 0
 
-    def __del__(self):
-        self.wait()
+    @Slot()
+    def check_clipboard(self):
+        if self.check_seq():
+            self.clipboard_updated.emit()
+            try:
+                with self.handler:
+                    new_clip = self.handler.read()
+                self.new_card_from_clipboard.emit(new_clip)
+            except RuntimeError as e:
+                if str(e) == "Cannot get clipboard mutex lock!":
+                    self._reset_clipboard_lock()
+                    # should attempt again because handler.seq hasn't been
+                    # updated since read would have failed.
 
-    def run(self):
-        while not self.halt:
-            if self.handler.check_seq():
-                self.clipboard_updated.emit()
-                try:
-                    with self.handler:
-                        new_clip = self.handler.read()
-                    self.new_card_from_clipboard.emit(new_clip)
-                except RuntimeError as e:
-                    if str(e) == "Cannot get clipboard mutex lock!":
-                        # DANGEROUS MAYBE
-                        wc.CloseClipboard()
-                        cb_mutex.unlock()
-                        # should attempt again because handler.seq hasn't been
-                        # updated since read would have failed.
+    def check_seq(self):
+        if cb_mutex.tryLock(10):
+            self.try_count = 0
+            new_seq = wc.GetClipboardSequenceNumber()
+            sleep(0.005)
+            cb_mutex.unlock()
+            return new_seq != self.handler.current_seq
+        if self.try_count < 500:
+            self.try_count += 1
+            self.thread.yieldCurrentThread()
+        else:
+            self._reset_clipboard_lock()
+            self.try_count = 0
+        return False
+
+    def _reset_clipboard_lock(self):
+        # DANGEROUS MAYBE
+        logging.error("Clipboard mutex hung and must be force reset")
+        try:
+            wc.CloseClipboard()
+        except pywintypes.error:
+            pass
+        cb_mutex.unlock()
 
     @Slot()
     def load(self, clip):
@@ -414,8 +453,19 @@ class Monitor(QtCore.QThread):
             self.handler.write(clip)
 
     @Slot()
-    def exit(self):
-        self.halt = True
+    def begin(self):
+        # self.thread.start()
+        # self.moveToThread(self.thread)
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(0)
+        self.timer.timeout.connect(self.check_clipboard)
+        self.timer.start()
+
+    @Slot()
+    def end(self):
+        # self.timer.stop()
+        self.thread.quit()
+
 
 if __name__ == '__main__':
     clipboard_thread = Monitor()

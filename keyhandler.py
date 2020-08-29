@@ -14,4 +14,12 @@ slots caught:
 register_key_combo(Keyset)
 begin_listening(Keyset)
 """
+# https://sourceforge.net/p/pyhook/wiki/PyHook_Tutorial/
+
+from PySide2 import QtCore
+from PySide2.QtCore import Signal, Slot
+
+import pyWinhook as ph
+import pythoncom
+from pynput.keyboard import Key, Controller
 
